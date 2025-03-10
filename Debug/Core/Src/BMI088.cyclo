@@ -1,0 +1,11 @@
+../Core/Src/BMI088.c:16:9:BMI088_Init	1
+../Core/Src/BMI088.c:145:9:BMI088_ReadAccRegister	2
+../Core/Src/BMI088.c:164:9:BMI088_ReadGyrRegister	2
+../Core/Src/BMI088.c:183:9:BMI088_WriteAccRegister	2
+../Core/Src/BMI088.c:196:9:BMI088_WriteGyrRegister	2
+../Core/Src/BMI088.c:216:9:BMI088_ReadAccelerometer	1
+../Core/Src/BMI088.c:240:9:BMI088_ReadGyroscope	1
+../Core/Src/BMI088.c:269:9:BMI088_ReadAccelerometerDMA	2
+../Core/Src/BMI088.c:286:6:BMI088_ReadAccelerometerDMA_Complete	1
+../Core/Src/BMI088.c:303:9:BMI088_ReadGyroscopeDMA	2
+../Core/Src/BMI088.c:320:6:BMI088_ReadGyroscopeDMA_Complete	1
