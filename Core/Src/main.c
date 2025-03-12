@@ -24,6 +24,9 @@
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
 #include "BMI088.h"
+#include "Fusion.h"
+#include <stdbool.h>
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -34,7 +37,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLE_TIME_MS_USB  10
+#define SAMPLE_TIME_MS_USB  10		// 0.01 s is the period
+#define SAMPLE_PERIOD (0.01f) // replace this with actual sample period
 
 /* USER CODE END PD */
 
@@ -132,10 +136,13 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
-  //Init_BMI088();
+	  // BMI088
+	  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
 
+	  // Fusion algorithms & object definition
+	  FusionAhrs ahrs;
+	  FusionAhrsInitialise(&ahrs);
 
-  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -158,10 +165,26 @@ int main(void)
 		//		  	  	  	  	  	  	 	 	 	 rollAcc_rad * RAD_TO_DEG, pitchAcc_rad * RAD_TO_DEG,
 		//											 rollGyr_rad * RAD_TO_DEG, pitchGyr_rad * RAD_TO_DEG);
 
-		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
-															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
+		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
+															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]); */
 
+
+	      FusionVector gyroscope = {imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]}; // replace this with actual gyroscope data in degrees/s
+	      FusionVector accelerometer = {imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]}; // replace this with actual accelerometer data in g
+
+		  FusionAhrsUpdateNoMagnetometer(&ahrs, gyroscope, accelerometer, SAMPLE_PERIOD);
+
+		  FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
+
+//////////////////////////////////////////////
+		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", gyroscope.array[0], gyroscope.array[1], gyroscope.array[2],
+				  accelerometer.array[0], accelerometer.array[1], accelerometer.array[2]);
+		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));*/
+
+		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f\r\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
 		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));
+
+//////////////////////////////////////////////
 
 		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
 
