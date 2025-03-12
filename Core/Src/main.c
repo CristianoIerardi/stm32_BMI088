@@ -34,7 +34,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLE_TIME_MS_USB  0
+#define SAMPLE_TIME_MS_USB  10
 
 /* USER CODE END PD */
 
