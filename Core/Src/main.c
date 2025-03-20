@@ -37,8 +37,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SAMPLE_TIME_MS_USB  10		// 0.01 s is the period
-#define SAMPLE_PERIOD (0.01f) // replace this with actual sample period
 
 /* USER CODE END PD */
 
@@ -68,7 +66,46 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define SAMPLE_TIME_MS_USB  2		// SAMPLE_TIME_MS_USB/1000 s is the period
+//#define SAMPLE_PERIOD (0.001f) 		// replace this with actual sample period
+
 char logBuf[128];
+//float real_Ts_USB = 0.001f;	// mseconds
+//uint32_t real_Fs_USB = 1;		// mseconds
+
+////////////////////////////////////////////////////////////////////////////////////////////
+/*NOTE: Register addres are written in the datasheet and in the .h file*/
+////////////////////////////////////////////////////////////////////////////////////////////
+// Register BMI_ACC_CONF 		0x40:  LPF and ODR, page 23 datasheet --> See section 4.4.1 for details
+//#define VAL_BMI_ACC_BWP		0x0A		// bit [7:4]	--> 0b1001xxxx
+//#define VAL_BMI_ACC_ODR		0X07		// bit [3:0]	--> 0bxxxx1000
+#define VAL_BMI_ACC_CONF		0x47	// bit [7:0]    --> 0b10011000 ==  is the mask of the two above
+
+// Register BMI_ACC_RANGE 		0x41:  Range accelerometer, +-3g to +- 24g
+#define VAL_BMI_ACC_RANGE		0x01	// 0x01 is +-6g
+
+// Register BMI_ACC_PWR_CONF 	0x7C:  Active or suspend mode
+#define VAL_BMI_ACC_PWC_CONF	0x00	// 0X00 is for the active mode
+
+// Register BMI_ACC_PWR_CTRL 	0x7D:  Accelerometer ON or OFF
+#define VAL_BMI_ACC_PWC_CTRL	0x04	// 0X04 is for accelerometer ON
+
+// Register BMI_GYR_RANGE 		0x0F:  Range gyroscope, +-125°/s to +-2000°/s
+#define VAL_BMI_GYR_RANGE		0x02	// 0x02 is +-500°/s
+
+// Register BMI_GYR_BANDWIDTH  	0x10:  Bandwidth gyroscope. See table at page 29 of the datasheet
+#define VAL_BMI_GYR_BANDWIDTH  	0x07	// 0x03 is for ODR = 400[Hz], filter bandwidth = 47[Hz]
+
+// Register BMI_GYR_LPM1 		0x11:  Gyroscope into normal, suspend, deep suspend mode
+//#define VAL_BMI_GYR_LPM1		0x00	// 0X00 is for normal mode
+
+//Register BMI_GYR_SELF_TEST    0x3C: Register for the self test (GYRO_SELF_TEST)
+//#define VAL_BMI_GYR_SELF_TEST	0x??	//these are 4 flag to set separately
+
+////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////
+
+
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
@@ -98,6 +135,16 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 			BMI088_ReadGyroscopeDMA_Complete(&imu);
 		}
 	}
+}
+
+void Init_AccGyro_Reg(BMI088 *imu)
+{
+	BMI088_WriteAccRegister(imu, BMI_ACC_CONF, VAL_BMI_ACC_CONF);
+	BMI088_WriteAccRegister(imu, BMI_ACC_RANGE, VAL_BMI_ACC_RANGE);
+	BMI088_WriteAccRegister(imu, BMI_ACC_PWR_CONF, VAL_BMI_ACC_PWC_CONF);
+	BMI088_WriteGyrRegister(imu, BMI_GYR_RANGE, VAL_BMI_ACC_PWC_CTRL);
+	BMI088_WriteGyrRegister(imu, BMI_GYR_RANGE, VAL_BMI_GYR_RANGE);
+	BMI088_WriteGyrRegister(imu, BMI_GYR_BANDWIDTH, VAL_BMI_GYR_BANDWIDTH);
 }
 
 /* USER CODE END 0 */
@@ -135,6 +182,8 @@ int main(void)
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
+  	  // Sample rate
+  	  float SAMPLE_PERIOD = 1 / (1000 * SAMPLE_TIME_MS_USB);
 
 	  // BMI088
 	  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
@@ -151,45 +200,48 @@ int main(void)
   // Timers:
   uint32_t timerUSB = 0;
 
+  // Registers setup
+  Init_AccGyro_Reg(&imu);
+
 
   while (1)
   {
-	  /*temp comment for github*/
 
 
   /* Log data via USB */
 	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB) {
 
-		  /* Print via USB */
-		 // sprintf(logBuf, "%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\r\n", rollEstimate_rad * RAD_TO_DEG, pitchEstimate_rad * RAD_TO_DEG,
-		//		  	  	  	  	  	  	 	 	 	 rollAcc_rad * RAD_TO_DEG, pitchAcc_rad * RAD_TO_DEG,
-		//											 rollGyr_rad * RAD_TO_DEG, pitchGyr_rad * RAD_TO_DEG);
-
-		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
-															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]); */
+		  // Passing measured data to structs gyroscope and accelerometer. This is done to compute the angles
+	      FusionVector gyroscope = {imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]};
+	      FusionVector accelerometer = {imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]};
 
 
-	      FusionVector gyroscope = {imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]}; // replace this with actual gyroscope data in degrees/s
-	      FusionVector accelerometer = {imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]}; // replace this with actual accelerometer data in g
-
-		  FusionAhrsUpdateNoMagnetometer(&ahrs, gyroscope, accelerometer, SAMPLE_PERIOD);
-
+		  FusionAhrsUpdateNoMagnetometer(&ahrs, gyroscope, accelerometer, SAMPLE_TIME_MS_USB);
 		  FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
 
-//////////////////////////////////////////////
+//------------------------------------------------------------------------------------------------------------------
+//---------- PRINT VALUES ------------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------------------------------------------
+		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2],
+				   imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]);
+		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));*/
+
 		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", gyroscope.array[0], gyroscope.array[1], gyroscope.array[2],
 				  accelerometer.array[0], accelerometer.array[1], accelerometer.array[2]);
 		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));*/
 
-		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f\r\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
+
+		  sprintf(logBuf, "roll=%.3f,\tpitch=%.3f,\tyaw=%.3f\r\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
 		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));
 
-//////////////////////////////////////////////
+//------------------------------------------------------------------------------------------------------------------
 
-		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
-
+		  // Since timers for sampling are not used, here the real frequency rate is calculated empirically
+		  //real_Ts_USB = HAL_GetTick() - timerUSB;	//mseconds
+		  //real_Fs_USB = 1000 / real_Ts_USB;
 		  timerUSB = HAL_GetTick();
 
+		  //HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
 
 	  }
 
