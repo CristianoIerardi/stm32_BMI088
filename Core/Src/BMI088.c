@@ -135,11 +135,35 @@ uint8_t BMI088_Init(BMI088 *imu,
 
 }
 
+/* FUNCTION TO FIND OFFSETS OF THE GYROSCOPE AND ACCELEROMETER DUE TO IMPERFECTIONS OF THE SENSORS */
+void BMI088_InitCalibration(BMI088 *imu, uint8_t caliLength)
+{
+	LED_Control(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);	// This led ON indicate that the sensor doesn't has to move.
+
+	HAL_Delay(1000);
+
+	char txBuf[128];
+
+	sprintf(txBuf, "Calibration, don't move the sensor\n\r");
+	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}
+
+
+
+
+	LED_Control(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);  // Calibration ended
+
+	HAL_Delay(1000);
+
+
+
+}
+
 /*
  *
  * LOW-LEVEL REGISTER FUNCTIONS
  *
  */
+
 
 /* ACCELEROMETER READS ARE DIFFERENT TO GYROSCOPE READS. SEND ONE BYTE ADDRESS, READ ONE DUMMY BYTE, READ TRUE DATA !!! */
 uint8_t BMI088_ReadAccRegister(BMI088 *imu, uint8_t regAddr, uint8_t *data) {

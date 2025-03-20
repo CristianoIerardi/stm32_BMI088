@@ -34,6 +34,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define NUM_SAMPLES_CALI	50	// Num of samples to compute the calibration
 #define SAMPLE_TIME_MS_USB  10
 
 /* USER CODE END PD */
@@ -65,6 +67,19 @@ static void MX_SPI1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 char logBuf[128];
+
+
+void LED_Control(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, GPIO_PinState state)
+{
+    if (state != 0)
+    {
+        HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_SET);  // Switch ON the led
+    }
+    else
+    {
+        HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);  // Switch OFF the led
+    }
+}
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
@@ -136,6 +151,7 @@ int main(void)
 
 
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
+  BMI088_InitCalibration(&imu, NUM_SAMPLES_CALI);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -145,29 +161,22 @@ int main(void)
   uint32_t timerUSB = 0;
 
 
+
+
   while (1)
   {
-	  /*temp comment for github*/
-
 
   /* Log data via USB */
-	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB) {
-
-		  /* Print via USB */
-		 // sprintf(logBuf, "%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\r\n", rollEstimate_rad * RAD_TO_DEG, pitchEstimate_rad * RAD_TO_DEG,
-		//		  	  	  	  	  	  	 	 	 	 rollAcc_rad * RAD_TO_DEG, pitchAcc_rad * RAD_TO_DEG,
-		//											 rollGyr_rad * RAD_TO_DEG, pitchGyr_rad * RAD_TO_DEG);
+	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
+	  {
 
 		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
 															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
 
-		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));
+		  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
 
-		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
-
+		  BMI088_InitCalibration(&imu, NUM_SAMPLES_CALI);
 		  timerUSB = HAL_GetTick();
-
-		  // try this chechout
 	  }
 
 

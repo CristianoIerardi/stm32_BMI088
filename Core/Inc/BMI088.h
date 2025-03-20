@@ -10,6 +10,7 @@
 
 
 #include "stm32f4xx_hal.h"
+#include "usbd_cdc_if.h"
 
 /* Register defines */
 #define BMI_ACC_CHIP_ID 		0x00
@@ -59,6 +60,7 @@ typedef struct {
 
 } BMI088;
 
+
 /*
  *
  * INITIALISATION
@@ -68,6 +70,8 @@ uint8_t BMI088_Init(BMI088 *imu,
 				 SPI_HandleTypeDef *spiHandle,
 				 GPIO_TypeDef *csAccPinBank, uint16_t csAccPin,
 				 GPIO_TypeDef *csGyrPinBank, uint16_t csGyrPin);
+
+void BMI088_InitCalibration(BMI088 *imu, uint8_t caliLength);
 
 /*
  *
