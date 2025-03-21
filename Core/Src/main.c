@@ -35,8 +35,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define NUM_SAMPLES_CALI	50	// Num of samples to compute the calibration
-#define SAMPLE_TIME_MS_USB  10
+#define NUM_SAMPLES_CALI	400 	// Num of samples to compute the calibration
+#define SAMPLE_TIME_MS_USB  250
 
 /* USER CODE END PD */
 
@@ -67,19 +67,10 @@ static void MX_SPI1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 char logBuf[128];
+float gyr[3] = {0,0,0};
+float acc[3] = {0,0,0};
 
 
-void LED_Control(GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin, GPIO_PinState state)
-{
-    if (state != 0)
-    {
-        HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_SET);  // Switch ON the led
-    }
-    else
-    {
-        HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);  // Switch OFF the led
-    }
-}
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
@@ -148,10 +139,15 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   //Init_BMI088();
-
-
+  /*--------------------------------------------*/
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
-  BMI088_InitCalibration(&imu, NUM_SAMPLES_CALI);
+
+  HAL_Delay(500);
+  BMI088_InitCalibration(&imu, imu.offset_gyr, imu.offset_acc, FALSE, NUM_SAMPLES_CALI);
+  sprintf(logBuf, "\tgX_off=%.3f,\tgY_off=%.3f,\tgZ_off=%.3f\r\n", imu.offset_gyr[0], imu.offset_gyr[1], imu.offset_gyr[2]);
+  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
+  /*--------------------------------------------*/
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -162,20 +158,33 @@ int main(void)
 
 
 
-
   while (1)
   {
 
   /* Log data via USB */
 	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
 	  {
+		  gyr[0] = imu.gyr_rps[0] ;//- imu.offset_gyr[0];
+		  gyr[1] = imu.gyr_rps[1] ;//- imu.offset_gyr[2];
+		  gyr[2] = imu.gyr_rps[2] ;//- imu.offset_gyr[2];
 
-		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
-															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
+		  acc[0] = imu.acc_mps2[0]; //- imu.offset_acc[0];
+		  acc[1] = imu.acc_mps2[1]; //- imu.offset_acc[2];
+		  acc[2] = imu.acc_mps2[2]; //- imu.offset_acc[2];
 
+		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n",
+				  acc[0], acc[1], acc[2], gyr[0],  gyr[1],  gyr[2]);
 		  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
 
-		  BMI088_InitCalibration(&imu, NUM_SAMPLES_CALI);
+		  sprintf(logBuf, "________,\t________,\t________,\t__=%.3f,\t__=%.3f,\t__=%.3f\r\n",
+				  (gyr[0] - imu.offset_gyr[0]),  (gyr[1] - imu.offset_gyr[1]),  (gyr[2] - imu.offset_gyr[2]) );
+		  		  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
+
+		  /*BMI088_InitCalibration(&imu, imu.offset_gyr, imu.offset_acc, FALSE, NUM_SAMPLES_CALI);
+		  sprintf(logBuf, "\tgX_off=%.3f,\tgY_off=%.3f,\tgZ_off=%.3f\r\n", imu.offset_gyr[0], imu.offset_gyr[1], imu.offset_gyr[2]);
+		  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
+		*/
+
 		  timerUSB = HAL_GetTick();
 	  }
 

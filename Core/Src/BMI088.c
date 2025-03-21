@@ -31,6 +31,14 @@ uint8_t BMI088_Init(BMI088 *imu,
 
 	uint8_t status = 0;
 
+	/* Set offset to zero */
+	imu->offset_acc[0] = 0;
+	imu->offset_acc[1] = 0;
+	imu->offset_acc[2] = 0;
+	imu->offset_gyr[0] = 0;
+	imu->offset_gyr[1] = 0;
+	imu->offset_gyr[2] = 0;
+
 	/*
 	 *
 	 * ACCELEROMETER
@@ -136,23 +144,46 @@ uint8_t BMI088_Init(BMI088 *imu,
 }
 
 /* FUNCTION TO FIND OFFSETS OF THE GYROSCOPE AND ACCELEROMETER DUE TO IMPERFECTIONS OF THE SENSORS */
-void BMI088_InitCalibration(BMI088 *imu, uint8_t caliLength)
+void BMI088_InitCalibration(BMI088 *imu, float* gyrOffset, float* accOffset, uint8_t doAccOffset, uint8_t caliLength)
 {
-	LED_Control(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);	// This led ON indicate that the sensor doesn't has to move.
 
-	HAL_Delay(1000);
-
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);  // This led ON indicate that the sensor doesn't has to move.
 	char txBuf[128];
 
 	sprintf(txBuf, "Calibration, don't move the sensor\n\r");
 	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}
 
+	/*----Offset calculation------------------------------------------------*/
 
+	// Reset offsets
+	for(int i=0; i<3; i++)	// 3 is the number of offset: gyrX, gyrY, gyrZ
+	{
+		gyrOffset[i] = 0;
+	}
 
+	for(int j=0; j<caliLength; j++) // Calculate mean
+	{
+		gyrOffset[0] += imu->gyr_rps[0];
+		gyrOffset[1] += imu->gyr_rps[1];
+		gyrOffset[2] += imu->gyr_rps[2];
+	}
 
-	LED_Control(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);  // Calibration ended
+	for(int i=0; i<3; i++)
+	{
+		gyrOffset[i] = gyrOffset[i] / caliLength;
+	}
 
-	HAL_Delay(1000);
+	/*----------------------------------------------------*/
+
+	if(doAccOffset)
+	{
+		/*compute here the accelerometer calibration*/
+	}
+
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);   // Calibration ended
+
+	sprintf(txBuf, "Calibration complete\n\r");
+	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}
 
 
 

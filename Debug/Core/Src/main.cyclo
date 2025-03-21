@@ -1,9 +1,8 @@
-../Core/Src/main.c:72:6:LED_Control	2
-../Core/Src/main.c:84:6:HAL_GPIO_EXTI_Callback	3
-../Core/Src/main.c:98:6:HAL_SPI_TxRxCpltCallback	4
-../Core/Src/main.c:120:5:main	3
-../Core/Src/main.c:197:6:SystemClock_Config	3
-../Core/Src/main.c:243:13:MX_SPI1_Init	2
-../Core/Src/main.c:279:13:MX_DMA_Init	1
-../Core/Src/main.c:300:13:MX_GPIO_Init	1
-../Core/Src/main.c:367:6:Error_Handler	1
+../Core/Src/main.c:75:6:HAL_GPIO_EXTI_Callback	3
+../Core/Src/main.c:89:6:HAL_SPI_TxRxCpltCallback	4
+../Core/Src/main.c:111:5:main	5
+../Core/Src/main.c:206:6:SystemClock_Config	3
+../Core/Src/main.c:252:13:MX_SPI1_Init	2
+../Core/Src/main.c:288:13:MX_DMA_Init	1
+../Core/Src/main.c:309:13:MX_GPIO_Init	1
+../Core/Src/main.c:376:6:Error_Handler	1
