@@ -24,6 +24,9 @@
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
 #include "BMI088.h"
+#include "Fusion.h"
+#include <stdbool.h>
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -36,7 +39,7 @@
 /* USER CODE BEGIN PD */
 
 #define NUM_SAMPLES_CALI	400 	// Num of samples to compute the calibration
-#define SAMPLE_TIME_MS_USB  250
+#define SAMPLE_TIME_MS_USB  5		// sampling period in the while loop
 
 /* USER CODE END PD */
 
@@ -66,10 +69,55 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+//#define SAMPLE_TIME_MS_USB  2		// SAMPLE_TIME_MS_USB/1000 s is the period
+//#define SAMPLE_PERIOD (0.001f) 		// replace this with actual sample period
+//float real_Ts_USB = 0.001f;	// mseconds
+//uint32_t real_Fs_USB = 1;		// mseconds
+
 char logBuf[128];
 float gyr[3] = {0,0,0};
 float acc[3] = {0,0,0};
 
+////////////////////////////////////////////////////////////////////////////////////////////
+/*NOTE: Register addres are written in the datasheet and in the .h file*/
+////////////////////////////////////////////////////////////////////////////////////////////
+// Register BMI_ACC_CONF 		0x40:  LPF and ODR, page 23 datasheet --> See section 4.4.1 for details
+//#define VAL_BMI_ACC_BWP		0x0A		// bit [7:4]	--> 0b1001xxxx
+//#define VAL_BMI_ACC_ODR		0X07		// bit [3:0]	--> 0bxxxx1000
+#define VAL_BMI_ACC_CONF		0x47	// bit [7:0]    --> 0b10011000 ==  is the mask of the two above
+
+// Register BMI_ACC_RANGE 		0x41:  Range accelerometer, +-3g to +- 24g
+#define VAL_BMI_ACC_RANGE		0x01	// 0x01 is +-6g
+
+// Register BMI_ACC_PWR_CONF 	0x7C:  Active or suspend mode
+#define VAL_BMI_ACC_PWC_CONF	0x00	// 0X00 is for the active mode
+
+// Register BMI_ACC_PWR_CTRL 	0x7D:  Accelerometer ON or OFF
+#define VAL_BMI_ACC_PWC_CTRL	0x04	// 0X04 is for accelerometer ON
+
+// Register BMI_GYR_RANGE 		0x0F:  Range gyroscope, +-125°/s to +-2000°/s
+#define VAL_BMI_GYR_RANGE		0x02	// 0x02 is +-500°/s
+
+// Register BMI_GYR_BANDWIDTH  	0x10:  Bandwidth gyroscope. See table at page 29 of the datasheet
+#define VAL_BMI_GYR_BANDWIDTH  	0x07	// 0x03 is for ODR = 400[Hz], filter bandwidth = 47[Hz]
+
+// Register BMI_GYR_LPM1 		0x11:  Gyroscope into normal, suspend, deep suspend mode
+//#define VAL_BMI_GYR_LPM1		0x00	// 0X00 is for normal mode
+
+//Register BMI_GYR_SELF_TEST    0x3C: Register for the self test (GYRO_SELF_TEST)
+//#define VAL_BMI_GYR_SELF_TEST	0x??	//these are 4 flag to set separately
+
+////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////
+void Init_AccGyro_Reg(BMI088 *imu)
+{
+	BMI088_WriteAccRegister(imu, BMI_ACC_CONF, VAL_BMI_ACC_CONF);
+	BMI088_WriteAccRegister(imu, BMI_ACC_RANGE, VAL_BMI_ACC_RANGE);
+	BMI088_WriteAccRegister(imu, BMI_ACC_PWR_CONF, VAL_BMI_ACC_PWC_CONF);
+	BMI088_WriteGyrRegister(imu, BMI_GYR_RANGE, VAL_BMI_ACC_PWC_CTRL);
+	BMI088_WriteGyrRegister(imu, BMI_GYR_RANGE, VAL_BMI_GYR_RANGE);
+	BMI088_WriteGyrRegister(imu, BMI_GYR_BANDWIDTH, VAL_BMI_GYR_BANDWIDTH);
+}
 
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -137,15 +185,21 @@ int main(void)
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
-
-  //Init_BMI088();
   /*--------------------------------------------*/
-  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
+	  // Sample rate
+	  float SAMPLE_PERIOD = 1 / (1000 * SAMPLE_TIME_MS_USB);
+	  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
 
-  HAL_Delay(500);
-  BMI088_InitCalibration(&imu, imu.offset_gyr, imu.offset_acc, FALSE, NUM_SAMPLES_CALI);
-  sprintf(logBuf, "\tgX_off=%.3f,\tgY_off=%.3f,\tgZ_off=%.3f\r\n", imu.offset_gyr[0], imu.offset_gyr[1], imu.offset_gyr[2]);
-  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
+	  HAL_Delay(500);
+
+	  /* This is for the offset calculation of the sensor */
+	  //BMI088_InitCalibration(&imu, imu.offset_gyr, imu.offset_acc, FALSE, NUM_SAMPLES_CALI);
+	  /*sprintf(logBuf, "\tgX_off=%.3f,\tgY_off=%.3f,\tgZ_off=%.3f\r\n", imu.offset_gyr[0], imu.offset_gyr[1], imu.offset_gyr[2]);
+	  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}*/
+
+	  // Fusion algorithms & object definition
+	  FusionAhrs ahrs;
+	  FusionAhrsInitialise(&ahrs);
   /*--------------------------------------------*/
 
   /* USER CODE END 2 */
@@ -156,34 +210,41 @@ int main(void)
   // Timers:
   uint32_t timerUSB = 0;
 
+  // Registers setup
+  //Init_AccGyro_Reg(&imu);
 
 
   while (1)
   {
 
   /* Log data via USB */
-	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
+	  if( (HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
 	  {
-		  gyr[0] = imu.gyr_rps[0] ;//- imu.offset_gyr[0];
-		  gyr[1] = imu.gyr_rps[1] ;//- imu.offset_gyr[2];
-		  gyr[2] = imu.gyr_rps[2] ;//- imu.offset_gyr[2];
+		  /*gyr[0] = imu.gyr_rps[0]; //- imu.offset_gyr[0];
+		  gyr[1] = imu.gyr_rps[1]; //- imu.offset_gyr[2];
+		  gyr[2] = imu.gyr_rps[2]; //- imu.offset_gyr[2];
 
 		  acc[0] = imu.acc_mps2[0]; //- imu.offset_acc[0];
 		  acc[1] = imu.acc_mps2[1]; //- imu.offset_acc[2];
-		  acc[2] = imu.acc_mps2[2]; //- imu.offset_acc[2];
+		  acc[2] = imu.acc_mps2[2]; //- imu.offset_acc[2];*/
 
-		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n",
-				  acc[0], acc[1], acc[2], gyr[0],  gyr[1],  gyr[2]);
-		  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
+					  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n",
+							  acc[0], acc[1], acc[2], gyr[0],  gyr[1],  gyr[2]);
+					  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
 
-		  sprintf(logBuf, "________,\t________,\t________,\t__=%.3f,\t__=%.3f,\t__=%.3f\r\n",
-				  (gyr[0] - imu.offset_gyr[0]),  (gyr[1] - imu.offset_gyr[1]),  (gyr[2] - imu.offset_gyr[2]) );
-		  		  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
+					  sprintf(logBuf, "________,\t________,\t________,\t__=%.3f,\t__=%.3f,\t__=%.3f\r\n",
+							  (gyr[0] - imu.offset_gyr[0]),  (gyr[1] - imu.offset_gyr[1]),  (gyr[2] - imu.offset_gyr[2]) );
+							  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}*/
 
-		  /*BMI088_InitCalibration(&imu, imu.offset_gyr, imu.offset_acc, FALSE, NUM_SAMPLES_CALI);
-		  sprintf(logBuf, "\tgX_off=%.3f,\tgY_off=%.3f,\tgZ_off=%.3f\r\n", imu.offset_gyr[0], imu.offset_gyr[1], imu.offset_gyr[2]);
-		  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
-		*/
+		  // Passing measured data to structs gyroscope and accelerometer. This is done to compute the angles
+		  FusionVector gyroscope = { {imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]} };
+		  FusionVector accelerometer = { {imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]} };
+
+		  FusionAhrsUpdateNoMagnetometer(&ahrs, gyroscope, accelerometer, SAMPLE_TIME_MS_USB);
+		  FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
+
+					  sprintf(logBuf, "Roll=%.3f\t Pitch=%.3f\t Yaw=%.3f\n\r", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
+					  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
 
 		  timerUSB = HAL_GetTick();
 	  }

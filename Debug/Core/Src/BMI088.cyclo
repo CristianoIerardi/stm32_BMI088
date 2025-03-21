@@ -1,5 +1,5 @@
 ../Core/Src/BMI088.c:16:9:BMI088_Init	1
-../Core/Src/BMI088.c:147:6:BMI088_InitCalibration	6
+../Core/Src/BMI088.c:147:6:BMI088_InitCalibration	4
 ../Core/Src/BMI088.c:200:9:BMI088_ReadAccRegister	2
 ../Core/Src/BMI088.c:219:9:BMI088_ReadGyrRegister	2
 ../Core/Src/BMI088.c:238:9:BMI088_WriteAccRegister	2

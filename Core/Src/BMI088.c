@@ -150,8 +150,8 @@ void BMI088_InitCalibration(BMI088 *imu, float* gyrOffset, float* accOffset, uin
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);  // This led ON indicate that the sensor doesn't has to move.
 	char txBuf[128];
 
-	sprintf(txBuf, "Calibration, don't move the sensor\n\r");
-	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}
+	/*sprintf(txBuf, "Calibration, don't move the sensor\n\r");
+	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}*/
 
 	/*----Offset calculation------------------------------------------------*/
 
@@ -182,8 +182,8 @@ void BMI088_InitCalibration(BMI088 *imu, float* gyrOffset, float* accOffset, uin
 
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);   // Calibration ended
 
-	sprintf(txBuf, "Calibration complete\n\r");
-	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}
+	/*sprintf(txBuf, "Calibration complete\n\r");
+	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}*/
 
 
 

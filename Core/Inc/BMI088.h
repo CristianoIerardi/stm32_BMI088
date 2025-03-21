@@ -12,10 +12,8 @@
 #include "stm32f4xx_hal.h"
 #include "usbd_cdc_if.h"
 
-#ifndef FALSE || TRUE
-	#define FALSE	0
-	#define TRUE	1
-#endif //FALSE || TRUE
+#define FALSE	0
+#define TRUE	1
 
 /* Register defines */
 #define BMI_ACC_CHIP_ID 		0x00
