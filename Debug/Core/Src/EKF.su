@@ -1,0 +1,4 @@
+../Core/Src/EKF.c:34:6:CalculateGyroBias	200	static
+../Core/Src/EKF.c:52:6:EKF_Predict	32	static
+../Core/Src/EKF.c:64:6:EKF_Update	48	static
+../Core/Src/EKF.c:76:6:ProcessIMU	184	static

@@ -35,6 +35,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SAMPLE_TIME_MS_USB  10
+#define SAMPLE_TIME_MS_TOGGLE  1000
 
 /* USER CODE END PD */
 
@@ -141,14 +142,18 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
+  HAL_Delay(2000);
+  CalculateGyroBias(&imu, 500);
+  HAL_Delay(2000);
+
   // Timers:
   uint32_t timerUSB = 0;
+  uint32_t timerToggle = 0;
+
 
 
   while (1)
   {
-	  /*temp comment for github*/
-
 
   /* Log data via USB */
 	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB) {
@@ -158,16 +163,19 @@ int main(void)
 		//		  	  	  	  	  	  	 	 	 	 rollAcc_rad * RAD_TO_DEG, pitchAcc_rad * RAD_TO_DEG,
 		//											 rollGyr_rad * RAD_TO_DEG, pitchGyr_rad * RAD_TO_DEG);
 
-		  sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
+		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
 															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
+		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));*/
 
-		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));
+		  ProcessIMU(imu.acc_mps2, imu.gyr_rps);
 
-		  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+		  if ((HAL_GetTick() - timerToggle) >= SAMPLE_TIME_MS_TOGGLE)
+		  {
+		  		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+		  		timerToggle = HAL_GetTick();
+		  }
 
 		  timerUSB = HAL_GetTick();
-
-
 	  }
 
 

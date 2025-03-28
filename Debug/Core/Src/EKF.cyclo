@@ -1,0 +1,4 @@
+../Core/Src/EKF.c:34:6:CalculateGyroBias	4
+../Core/Src/EKF.c:52:6:EKF_Predict	1
+../Core/Src/EKF.c:64:6:EKF_Update	1
+../Core/Src/EKF.c:76:6:ProcessIMU	2
