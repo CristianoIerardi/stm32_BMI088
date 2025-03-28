@@ -5,13 +5,8 @@
  *      Author: crist
  */
 
-
-#include "main.h"
 #include "EKF.h"
-#include <stdint.h> 	// → It defines uint32_t e uint8_t
-#include <math.h> 		// → Needed for atan2f and sqrtf
-#include <stdio.h> 		// → Needed for sprintf and snprintf
-#include "BMI088.h"
+
 
 
 #ifndef M_PI
@@ -43,9 +38,10 @@ void CalculateGyroBias(BMI088* imu, int samples) {
         gyro_bias[i] = bias[i] / samples;
     }
 
-    char buffer[128];
+    /*char buffer[128];
     sprintf(buffer, "BIAS: X=%.2f°, Y=%.2f°, Z=%.2f°\r\n", gyro_bias[0], gyro_bias[1], gyro_bias[2]);
     while(CDC_Transmit_FS((uint8_t *) buffer, strlen(buffer)) == HAL_BUSY);
+	*/
 }
 
 
@@ -83,9 +79,13 @@ void ProcessIMU(float accel_data[3], float gyro_data[3])
     EKF_Update(accel_data);
 
     char buffer[128];
+
+    sprintf(buffer, "E,%lu,%.4f,%.4f,%.4f\r\n", HAL_GetTick(), state[0] * (180.0 / M_PI), state[1] * (180.0 / M_PI), state[2] * (180.0 / M_PI));
+    while(CDC_Transmit_FS((uint8_t *) buffer, strlen(buffer)) == HAL_BUSY);
+    /*
     sprintf(buffer, "Roll=%.2f°, Pitch=%.2f°, Yaw=%.2f°\r\n", state[0] * (180.0 / M_PI), state[1] * (180.0 / M_PI), state[2] * (180.0 / M_PI));
     while(CDC_Transmit_FS((uint8_t *) buffer, strlen(buffer)) == HAL_BUSY);
-
+	*/
 }
 
 

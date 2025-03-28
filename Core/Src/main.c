@@ -24,6 +24,9 @@
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
 #include "BMI088.h"
+#include <stdio.h>
+#include "ximu3_wrapper.h"
+
 
 /* USER CODE END Includes */
 
@@ -35,7 +38,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SAMPLE_TIME_MS_USB  10
-#define SAMPLE_TIME_MS_TOGGLE  1000
+#define SAMPLE_TIME_MS_TOGGLE  3000
 
 /* USER CODE END PD */
 
@@ -97,6 +100,14 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	}
 }
 
+
+/*void SendEulerAngles(float roll, float pitch, float yaw, uint32_t timestamp)
+{
+    char buffer[100];
+    snprintf(buffer, sizeof(buffer), "E,%lu,%.4f,%.4f,%.4f\r\n", timestamp, roll, pitch, yaw);
+    HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
+}*/
+
 /* USER CODE END 0 */
 
 /**
@@ -155,13 +166,16 @@ int main(void)
   while (1)
   {
 
-  /* Log data via USB */
-	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB) {
+	  /*if(HAL_GetTick - timerUSB < 0)
+		  timerUSB = 0;*/	// If the timerUSB
 
-		  /* Print via USB */
+
+	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
+	  {
+		 /* Print via USB */
 		 // sprintf(logBuf, "%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\r\n", rollEstimate_rad * RAD_TO_DEG, pitchEstimate_rad * RAD_TO_DEG,
-		//		  	  	  	  	  	  	 	 	 	 rollAcc_rad * RAD_TO_DEG, pitchAcc_rad * RAD_TO_DEG,
-		//											 rollGyr_rad * RAD_TO_DEG, pitchGyr_rad * RAD_TO_DEG);
+		 //		  	  	  	  	  	  	 	 	 	 rollAcc_rad * RAD_TO_DEG, pitchAcc_rad * RAD_TO_DEG,
+		 //											 rollGyr_rad * RAD_TO_DEG, pitchGyr_rad * RAD_TO_DEG);
 
 		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
 															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
@@ -171,11 +185,20 @@ int main(void)
 
 		  if ((HAL_GetTick() - timerToggle) >= SAMPLE_TIME_MS_TOGGLE)
 		  {
-		  		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
-		  		timerToggle = HAL_GetTick();
+				HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+				timerToggle = HAL_GetTick();
 		  }
 
 		  timerUSB = HAL_GetTick();
+
+		  float roll = 1.23;
+		  float pitch = -2.34;
+		  float yaw = 0.56;
+
+		  xIMU3_sendEulerAngles(roll, pitch, yaw);
+
+
+
 	  }
 
 
