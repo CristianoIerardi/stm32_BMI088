@@ -5,17 +5,34 @@
  *      Author: crist
  */
 
+#define USE_API
+
 #include "EKF.h"
+#include "main.h"
+#include "EKF.h"
+#include <stdint.h> 	// → It defines uint32_t e uint8_t
+#include <math.h> 		// → Needed for atan2f and sqrtf
+#include <stdio.h> 		// → Needed for sprintf and snprintf
 
+/*----- Communication Libraries ------------------------*/
+#ifdef USE_SERIAL
+	#include "Serial_Comm.h"
+#endif //USE_SERAIL
+#ifdef USE_API
+	#include "API_Comm.h"
+#endif //USE_API
 
-
+/*------------------------------------------------------*/
+/*------------------------------------------------------*/
+/*------------------------------------------------------*/
+/* Constant variables */
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
 
 /*---------------------------------------------------------------*/
-
+/* Variables */
 float state[3] = {0};  // [roll, pitch, yaw]
 float P[3][3] = {{0.1, 0, 0}, {0, 0.1, 0}, {0, 0, 0.1}};
 float Q[3][3] = {{0.3, 0, 0}, {0, 0.3, 0}, {0, 0, 0.3}};
@@ -26,7 +43,7 @@ uint32_t prev_time;
 
 
 
-void CalculateGyroBias(BMI088* imu, int samples) {
+void EKF_CalculateGyroBias(BMI088* imu, int samples) {
     float bias[3] = {0};
 
     for (int i = 0; i < samples; i++) {
@@ -38,10 +55,9 @@ void CalculateGyroBias(BMI088* imu, int samples) {
         gyro_bias[i] = bias[i] / samples;
     }
 
-    /*char buffer[128];
-    sprintf(buffer, "BIAS: X=%.2f°, Y=%.2f°, Z=%.2f°\r\n", gyro_bias[0], gyro_bias[1], gyro_bias[2]);
-    while(CDC_Transmit_FS((uint8_t *) buffer, strlen(buffer)) == HAL_BUSY);
-	*/
+#ifdef USE_SERIAL
+    Serial_GyroBias(gyro_bias[0], gyro_bias[1], gyro_bias[2]);
+#endif //USE_SERIAL
 }
 
 
@@ -69,7 +85,7 @@ void EKF_Update(float accel_data[3])
 }
 
 
-void ProcessIMU(float accel_data[3], float gyro_data[3])
+void EKF_FindAngles(float accel_data[3], float gyro_data[3])
 {
     uint32_t curr_time = HAL_GetTick();
     float dt = (curr_time - prev_time) / 1000.0f;
@@ -78,14 +94,17 @@ void ProcessIMU(float accel_data[3], float gyro_data[3])
     EKF_Predict(dt, gyro_data);
     EKF_Update(accel_data);
 
-    char buffer[128];
+    float roll = state[0] * (180.0 / M_PI);
+    float pitch = state[1] * (180.0 / M_PI);
+    float yaw = state[2] * (180.0 / M_PI);
 
-    sprintf(buffer, "E,%lu,%.4f,%.4f,%.4f\r\n", HAL_GetTick(), state[0] * (180.0 / M_PI), state[1] * (180.0 / M_PI), state[2] * (180.0 / M_PI));
-    while(CDC_Transmit_FS((uint8_t *) buffer, strlen(buffer)) == HAL_BUSY);
-    /*
-    sprintf(buffer, "Roll=%.2f°, Pitch=%.2f°, Yaw=%.2f°\r\n", state[0] * (180.0 / M_PI), state[1] * (180.0 / M_PI), state[2] * (180.0 / M_PI));
-    while(CDC_Transmit_FS((uint8_t *) buffer, strlen(buffer)) == HAL_BUSY);
-	*/
+#ifdef USE_SERIAL
+    Serial_PrintAngles(roll, pitch, yaw);
+#endif //USE_SERIAL
+#ifdef USE_API
+    API_PrintAngles(HAL_GetTick(), roll, pitch, yaw);
+#endif //USE_API
+
 }
 
 

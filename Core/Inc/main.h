@@ -22,12 +22,17 @@
 #ifndef __MAIN_H
 #define __MAIN_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/*------------------------------------------------------*/
+/*------ Communication Libraries -----------------------*/
+#undef USE_SERIAL
+//#define USE_SERIAL
 
+#undef USE_API
+//#define USE_API
+/*------------------------------------------------------*/
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
+
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */

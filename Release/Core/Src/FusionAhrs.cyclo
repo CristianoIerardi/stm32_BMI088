@@ -1,0 +1,16 @@
+../Core/Inc/FusionMath.h:169:21:FusionFastInverseSqrt	1
+../Core/Src/FusionAhrs.c:292:28:Feedback	2
+../Core/Src/FusionAhrs.c:64:6:FusionAhrsReset	1
+../Core/Src/FusionAhrs.c:85:6:FusionAhrsSetSettings	7
+../Core/Src/FusionAhrs.c:46:6:FusionAhrsInitialise	1
+../Core/Src/FusionAhrs.c:113:6:FusionAhrsUpdate	28
+../Core/Src/FusionAhrs.c:344:6:FusionAhrsUpdateExternalHeading	1
+../Core/Src/FusionAhrs.c:369:18:FusionAhrsGetQuaternion	1
+../Core/Src/FusionAhrs.c:378:6:FusionAhrsSetQuaternion	1
+../Core/Src/FusionAhrs.c:387:14:FusionAhrsGetGravity	1
+../Core/Src/FusionAhrs.c:404:14:FusionAhrsGetLinearAcceleration	3
+../Core/Src/FusionAhrs.c:423:14:FusionAhrsGetEarthAcceleration	3
+../Core/Src/FusionAhrs.c:461:26:FusionAhrsGetInternalStates	7
+../Core/Src/FusionAhrs.c:478:17:FusionAhrsGetFlags	1
+../Core/Src/FusionAhrs.c:495:6:FusionAhrsSetHeading	1
+../Core/Src/FusionAhrs.c:324:6:FusionAhrsUpdateNoMagnetometer	2

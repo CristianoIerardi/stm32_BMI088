@@ -25,7 +25,14 @@
 #include "usbd_cdc_if.h"
 #include "BMI088.h"
 #include <stdio.h>
-#include "ximu3_wrapper.h"
+
+#ifdef USE_SERIAL
+	#include "Serial_Comm.h"
+#endif //USE_SERIAL
+#ifdef USE_API
+	#include "API_Comm.h"
+#endif //USE_API
+
 
 
 /* USER CODE END Includes */
@@ -38,7 +45,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define SAMPLE_TIME_MS_USB  10
-#define SAMPLE_TIME_MS_TOGGLE  3000
+#define SAMPLE_TIME_MS_TOGGLE  500
 
 /* USER CODE END PD */
 
@@ -101,12 +108,6 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 }
 
 
-/*void SendEulerAngles(float roll, float pitch, float yaw, uint32_t timestamp)
-{
-    char buffer[100];
-    snprintf(buffer, sizeof(buffer), "E,%lu,%.4f,%.4f,%.4f\r\n", timestamp, roll, pitch, yaw);
-    HAL_UART_Transmit(&huart2, (uint8_t*)buffer, strlen(buffer), HAL_MAX_DELAY);
-}*/
 
 /* USER CODE END 0 */
 
@@ -154,7 +155,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   HAL_Delay(2000);
-  CalculateGyroBias(&imu, 500);
+  EKF_CalculateGyroBias(&imu, 500);
   HAL_Delay(2000);
 
   // Timers:
@@ -165,48 +166,33 @@ int main(void)
 
   while (1)
   {
+	if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
+	{
 
-	  /*if(HAL_GetTick - timerUSB < 0)
-		  timerUSB = 0;*/	// If the timerUSB
-
-
-	  if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
-	  {
-		 /* Print via USB */
-		 // sprintf(logBuf, "%.1f,%.1f,%.1f,%.1f,%.1f,%.1f\r\n", rollEstimate_rad * RAD_TO_DEG, pitchEstimate_rad * RAD_TO_DEG,
-		 //		  	  	  	  	  	  	 	 	 	 rollAcc_rad * RAD_TO_DEG, pitchAcc_rad * RAD_TO_DEG,
-		 //											 rollGyr_rad * RAD_TO_DEG, pitchGyr_rad * RAD_TO_DEG);
-
-		  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n", imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2],
-															   imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
-		  CDC_Transmit_FS((uint8_t *) logBuf, strlen(logBuf));*/
-
-		  ProcessIMU(imu.acc_mps2, imu.gyr_rps);
-
-		  if ((HAL_GetTick() - timerToggle) >= SAMPLE_TIME_MS_TOGGLE)
-		  {
-				HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
-				timerToggle = HAL_GetTick();
-		  }
-
-		  timerUSB = HAL_GetTick();
-
-		  float roll = 1.23;
-		  float pitch = -2.34;
-		  float yaw = 0.56;
+		EKF_FindAngles(imu.acc_mps2, imu.gyr_rps);
 
 
-		  xIMU3_sendEulerAngles(roll, pitch, yaw);
+		// Toggle to show if the code is running
+		if ((HAL_GetTick() - timerToggle) >= SAMPLE_TIME_MS_TOGGLE)
+		{
+			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+			timerToggle = HAL_GetTick();
+		}
+		timerUSB = HAL_GetTick();
 
 
-	  }
+/*------- DISPLAY ON SERIAL OR API -----------------------------------*/
+#ifdef USE_SERIAL
+		Serial_PrintAcc(imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]);
+		Serial_PrintGyr(imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
+#endif //USE_API
+#ifdef USE_API
 
-
-
-
+#endif //USE_API
+/*---------------------------------------------------------------------*/
+	}
 
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */

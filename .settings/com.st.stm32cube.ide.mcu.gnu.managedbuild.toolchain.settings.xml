@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<toolchain id="com.st.stm32cube.ide.mcu.gnu.managedbuild.toolchain.exe.debug.123456789" name="GNU MCU Toolchain">
+    <option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.option.linker.command" value="arm-none-eabi-g++"/>
+</toolchain>
