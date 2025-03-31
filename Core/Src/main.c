@@ -195,8 +195,8 @@ int main(void)
 		  float pitch = -2.34;
 		  float yaw = 0.56;
 
-		  xIMU3_sendEulerAngles(roll, pitch, yaw);
 
+		  xIMU3_sendEulerAngles(roll, pitch, yaw);
 
 
 	  }
