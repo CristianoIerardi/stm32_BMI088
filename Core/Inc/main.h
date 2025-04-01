@@ -28,7 +28,7 @@
 //#define USE_SERIAL
 
 #undef USE_API
-//#define USE_API
+#define USE_API
 /*------------------------------------------------------*/
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
