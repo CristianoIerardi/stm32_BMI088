@@ -1,0 +1,28 @@
+# Compilation file 
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.axf
+
+# Folder build 
+build/
+Debug/
+Release/
+
+# Automatically generated files by STM32CubeIDE
+*.launch
+*.settings/
+*.cproject
+*.project
+*.mxproject
+*.ide
+
+# Configuration files and cache
+.ipch/
+.vscode/
+*.bak
+*.tmp
+*.swp

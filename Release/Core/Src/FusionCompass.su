@@ -1,0 +1,2 @@
+../Core/Inc/FusionMath.h:316:28:FusionVectorNormalise	48	static
+../Core/Src/FusionCompass.c:25:7:FusionCompassCalculateHeading	120	static
