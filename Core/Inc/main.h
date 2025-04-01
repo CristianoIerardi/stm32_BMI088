@@ -23,12 +23,7 @@
 #define __MAIN_H
 
 /*------------------------------------------------------*/
-/*------ Communication Libraries -----------------------*/
-#undef USE_SERIAL
-//#define USE_SERIAL
 
-#undef USE_API
-//#define USE_API
 /*------------------------------------------------------*/
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
@@ -41,7 +36,11 @@
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+/*------ Communication Libraries -----------------------*/
+//#undef USE_SERIAL
+//#define USE_SERIAL
+//#undef USE_API
+//#define USE_API
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -58,7 +57,7 @@
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+extern char txBuff[128];
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
