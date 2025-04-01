@@ -3,6 +3,7 @@
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
+  * @autor			: CriIera
   ******************************************************************************
   * @attention
   *
@@ -25,13 +26,14 @@
 #include "usbd_cdc_if.h"
 #include "BMI088.h"
 #include <stdio.h>
+#include "EKF.h"
 
-#ifdef USE_SERIAL
+//#ifdef USE_SERIAL
 	#include "Serial_Comm.h"
-#endif //USE_SERIAL
-#ifdef USE_API
+//#endif //USE_SERIAL
+//#ifdef USE_API
 	#include "API_Comm.h"
-#endif //USE_API
+//#endif //USE_API
 
 
 
@@ -44,6 +46,9 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define SERIAL_OR_API  		0 	// 0 if we use API
+								// 1 if we use SERIAL
+
 #define SAMPLE_TIME_MS_USB  10
 #define SAMPLE_TIME_MS_TOGGLE  500
 
@@ -51,6 +56,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+
 
 /* USER CODE END PM */
 
@@ -75,7 +81,19 @@ static void MX_SPI1_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-char logBuf[128];
+/// Global variables
+
+char txBuff[128];
+float acc[3] = {0,0,0};
+float gyr[3] = {0,0,0};
+float angles[3] = {0,0,0};
+float bias[3] = {0,0,0};
+
+// Timers:
+uint32_t timerUSB = 0;
+uint32_t timerToggle = 0;
+
+
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
@@ -106,6 +124,31 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 		}
 	}
 }
+
+
+void Take_IMU_Measurements(BMI088 *imu)
+{
+	acc[0] = imu->acc_mps2[0];
+	acc[1] = imu->acc_mps2[1];
+	acc[2] = imu->acc_mps2[2];
+	gyr[0] = imu->gyr_rps[0];
+	gyr[1] = imu->gyr_rps[1];
+	gyr[2] = imu->gyr_rps[2];
+}
+
+
+void Toggle()
+{
+	// Toggle to show if the code is running
+	if ((HAL_GetTick() - timerToggle) >= SAMPLE_TIME_MS_TOGGLE)
+	{
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+		timerToggle = HAL_GetTick();
+	}
+	timerUSB = HAL_GetTick();
+}
+
+
 
 
 
@@ -143,52 +186,47 @@ int main(void)
   MX_DMA_Init();
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
+
   /* USER CODE BEGIN 2 */
 
-  //Init_BMI088();
-
-
+  HAL_Delay(1000);
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  HAL_Delay(2000);
-  EKF_CalculateGyroBias(&imu, 500);
-  HAL_Delay(2000);
-
-  // Timers:
-  uint32_t timerUSB = 0;
-  uint32_t timerToggle = 0;
-
+  //EKF_CalculateGyroBias(&imu, 500, bias);
+  HAL_Delay(1000);
 
 
   while (1)
   {
 	if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
 	{
+		Take_IMU_Measurements(&imu);
+		EKF_FindAngles(acc, gyr, angles);
 
-		EKF_FindAngles(imu.acc_mps2, imu.gyr_rps);
-
-
-		// Toggle to show if the code is running
-		if ((HAL_GetTick() - timerToggle) >= SAMPLE_TIME_MS_TOGGLE)
-		{
-			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
-			timerToggle = HAL_GetTick();
-		}
-		timerUSB = HAL_GetTick();
+		Toggle();
 
 
 /*------- DISPLAY ON SERIAL OR API -----------------------------------*/
-#ifdef USE_SERIAL
-		Serial_PrintAcc(imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]);
-		Serial_PrintGyr(imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]);
-#endif //USE_API
-#ifdef USE_API
-
-#endif //USE_API
+//#ifdef USE_SERIAL
+		if(SERIAL_OR_API)
+		{
+			Serial_PrintAcc(acc[0], acc[1], acc[2]);
+			Serial_PrintGyr(gyr[0], gyr[1], gyr[2]);
+			Serial_PrintAngles(angles[0], angles[1], angles[2]);
+			//Serial_GyroBias(bias[0], bias[1], bias[2]);
+		}
+//#endif //USE_API
+//#ifdef USE_API
+		else
+		{
+			API_PrintAngles(HAL_GetTick(), angles[0], angles[1], angles[2]);
+		}
+//#endif //USE_API
 /*---------------------------------------------------------------------*/
 	}
 

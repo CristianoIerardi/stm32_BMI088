@@ -1,4 +1,4 @@
-../Core/Src/EKF.c:46:6:EKF_CalculateGyroBias	3
-../Core/Src/EKF.c:64:6:EKF_Predict	1
-../Core/Src/EKF.c:76:6:EKF_Update	1
-../Core/Src/EKF.c:88:6:EKF_FindAngles	1
+../Core/Src/EKF.c:53:6:EKF_CalculateGyroBias	3
+../Core/Src/EKF.c:72:6:EKF_Predict	1
+../Core/Src/EKF.c:88:6:EKF_Update	1
+../Core/Src/EKF.c:106:6:EKF_FindAngles	1
