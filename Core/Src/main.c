@@ -87,7 +87,7 @@ char txBuff[128];
 float acc[3] = {0,0,0};
 float gyr[3] = {0,0,0};
 float angles[3] = {0,0,0};
-float bias[3] = {0,0,0};
+//float bias[3] = {0,0,0};
 
 // Timers:
 uint32_t timerUSB = 0;
@@ -197,7 +197,7 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  //EKF_CalculateGyroBias(&imu, 500, bias);
+  EKF_CalculateGyroBias(&imu, 500);
   HAL_Delay(1000);
 
 
@@ -224,7 +224,7 @@ int main(void)
 //#ifdef USE_API
 		else
 		{
-			API_PrintAngles(HAL_GetTick(), angles[0], angles[1], angles[2]);
+			API_PrintAngles(1000*HAL_GetTick(), angles[0], angles[1], angles[2]);
 		}
 //#endif //USE_API
 /*---------------------------------------------------------------------*/
