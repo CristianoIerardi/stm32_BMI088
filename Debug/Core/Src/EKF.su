@@ -1,6 +1,4 @@
-../Core/Src/EKF.c:24:6:EKF_CalculateGyroBias	40	static
-../Core/Src/EKF.c:40:12:Quaternion_Multiply	88	static
-../Core/Src/EKF.c:50:6:Normalize_Quaternion	24	static
-../Core/Src/EKF.c:59:6:EKF_Predict	40	static
-../Core/Src/EKF.c:72:6:EKF_Update	64	static
-../Core/Src/EKF.c:93:6:EKF_GetAngles	24	static
+../Core/Src/EKF.c:54:6:EKF_CalculateGyroBias	40	static
+../Core/Src/EKF.c:73:6:EKF_Predict	32	static
+../Core/Src/EKF.c:89:6:EKF_Update	48	static
+../Core/Src/EKF.c:107:6:EKF_FindAngles	40	static

@@ -18,17 +18,25 @@
 
 
 /**
- * @brief Function to display on serial the Roll, Pitch, Yaw
- * @param r Roll
- * @param r Pitch
- * @param r Yaw
+ * @brief Function to display on API the Roll, Pitch, Yaw
+ * @param angle [0]: Roll, [1]: Pitch, [2]: Yaw
  */
-void API_PrintAngles(uint32_t timestamp, float r, float p, float y)
+void API_PrintAngles(uint32_t timestamp, float* angle)
 {
-	sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\n", timestamp, r, p, y);
+	sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\n", timestamp, angle[0], angle[1], angle[2]);
 	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
 }
 
+/**
+ * @brief Function to display on API the gyroscope and accelerometer values
+ * @param gyro array of gyroscope measurements --> gyroX, gyroY, gyroZ
+ * @param accel array of accelerometer measurements --> accelX, accelY, accelZ
+ */
+void API_SendInertial(uint32_t timestamp, float* gyro, float* accel)
+{
+	sprintf(txBuff, "I,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n", timestamp, gyro[0], gyro[1], gyro[2], accel[0], accel[1], accel[2]);
+	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+}
 
 
 

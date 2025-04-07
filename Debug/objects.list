@@ -1,5 +1,6 @@
 "./Core/Src/API_Comm.o"
 "./Core/Src/BMI088.o"
+"./Core/Src/ComputeOrientation.o"
 "./Core/Src/EKF.o"
 "./Core/Src/FusionAhrs.o"
 "./Core/Src/FusionCompass.o"

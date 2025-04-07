@@ -27,6 +27,7 @@
 #include "BMI088.h"
 #include <stdio.h>
 #include "EKF.h"
+#include "ComputeOrientation.h"
 
 //#ifdef USE_SERIAL
 	#include "Serial_Comm.h"
@@ -49,8 +50,8 @@
 #define SERIAL_OR_API  		0 	// 0 if we use API
 								// 1 if we use SERIAL
 
-#define SAMPLE_TIME_MS_USB  10
-#define SAMPLE_TIME_MS_TOGGLE  500
+#define SAMPLE_TIME_MS_USB  	10
+#define SAMPLE_TIME_MS_TOGGLE  	500
 
 /* USER CODE END PD */
 
@@ -84,10 +85,17 @@ static void MX_SPI1_Init(void);
 /// Global variables
 
 char txBuff[128];
-float acc[3] = {0,0,0};
-float gyr[3] = {0,0,0};
+/*float acc[3] = {0,0,0};
+float gyr[3] = {0,0,0};*/
 float angles[3] = {0,0,0};
 //float bias[3] = {0,0,0};
+
+/*------------------*/
+Quaternion q = {{1, 0, 0, 0}}; // Stato iniziale
+Vector3 gyr = {{0.0f, 0.0f, 0.0f}}; // Dati giroscopio di esempio
+Vector3 acc = {{0.0f, 0.0f, 0.0f}}; // Dati accelerometro di esempio
+//EulerAngles angle = {{0.0f, 0.0f, 0.0f}};
+/*------------------*/
 
 // Timers:
 uint32_t timerUSB = 0;
@@ -128,12 +136,21 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 
 void Take_IMU_Measurements(BMI088 *imu)
 {
+	/*
 	acc[0] = imu->acc_mps2[0];
 	acc[1] = imu->acc_mps2[1];
 	acc[2] = imu->acc_mps2[2];
 	gyr[0] = imu->gyr_rps[0];
 	gyr[1] = imu->gyr_rps[1];
-	gyr[2] = imu->gyr_rps[2];
+	gyr[2] = imu->gyr_rps[2];*/
+
+	gyr.y = -imu->gyr_rps[0];
+	gyr.x = imu->gyr_rps[1];
+	gyr.z = imu->gyr_rps[2];
+	acc.y = -imu->acc_mps2[0];
+	acc.x = imu->acc_mps2[1];
+	acc.z = imu->acc_mps2[2];
+
 }
 
 
@@ -147,7 +164,6 @@ void Toggle()
 	}
 	timerUSB = HAL_GetTick();
 }
-
 
 
 
@@ -186,7 +202,6 @@ int main(void)
   MX_DMA_Init();
   MX_SPI1_Init();
   MX_USB_DEVICE_Init();
-
   /* USER CODE BEGIN 2 */
 
   HAL_Delay(1000);
@@ -198,39 +213,54 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   EKF_CalculateGyroBias(&imu, 500);
+  SetQuaternionFromEuler(&q, 0, 0, 0);	// Angles on the starting position: roll=0, pitch=0, yaw=0
   HAL_Delay(1000);
 
 
   while (1)
   {
+
 	if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
 	{
 		Take_IMU_Measurements(&imu);
-		EKF_FindAngles(acc, gyr, angles);
+		//EKF_FindAngles(acc, gyr, angles);
 
-		Toggle();
+		float dt = (float)((float)(HAL_GetTick() - timerUSB)) / 1000;
+		timerUSB = HAL_GetTick();
+
+		UpdateQuaternion(&q, gyr, dt);
+		CorrectQuaternionWithAccel(&q, acc, 0.9);
+		QuaternionToEuler(q, angles);
+
+		//Toggle();
 
 
 /*------- DISPLAY ON SERIAL OR API -----------------------------------*/
 //#ifdef USE_SERIAL
 		if(SERIAL_OR_API)
 		{
-			Serial_PrintAcc(acc[0], acc[1], acc[2]);
-			Serial_PrintGyr(gyr[0], gyr[1], gyr[2]);
-			Serial_PrintAngles(angles[0], angles[1], angles[2]);
+			//Serial_PrintAcc(acc[0], acc[1], acc[2]);
+			//Serial_PrintGyr(gyr[0], gyr[1], gyr[2]);
+			//Serial_PrintAngles(angles[0], angles[1], angles[2]);
 			//Serial_GyroBias(bias[0], bias[1], bias[2]);
 		}
 //#endif //USE_API
 //#ifdef USE_API
 		else
 		{
-			API_PrintAngles(1000*HAL_GetTick(), angles[0], angles[1], angles[2]);
+			//float angles[3] = {angle.roll, angle.pitch, angle.yaw};
+			API_PrintAngles(1000*HAL_GetTick(), angles);
+			//API_SendInertial(1000*HAL_GetTick(), gyr, acc);
+			float gyrArr[3] = {gyr.x, gyr.y, gyr.z};
+			float accArr[3] = {acc.x, acc.y, acc.z};
+			API_SendInertial(HAL_GetTick(), gyrArr, accArr);
 		}
 //#endif //USE_API
 /*---------------------------------------------------------------------*/
 	}
 
     /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
