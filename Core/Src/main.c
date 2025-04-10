@@ -30,7 +30,7 @@
 #include "ComputeOrientation.h"
 
 //#ifdef USE_SERIAL
-	#include "Serial_Comm.h"
+	//#include "Serial_Comm.h"
 //#endif //USE_SERIAL
 //#ifdef USE_API
 	#include "API_Comm.h"
@@ -66,6 +66,8 @@ SPI_HandleTypeDef hspi1;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
 
+TIM_HandleTypeDef htim2;
+
 /* USER CODE BEGIN PV */
 BMI088 imu;
 
@@ -76,6 +78,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -84,11 +87,12 @@ static void MX_SPI1_Init(void);
 /* USER CODE BEGIN 0 */
 /// Global variables
 
-char txBuff[128];
+//char main_txBuff[128];
 /*float acc[3] = {0,0,0};
 float gyr[3] = {0,0,0};*/
 float angles[3] = {0,0,0};
 //float bias[3] = {0,0,0};
+uint32_t timestamp = 0;
 
 /*------------------*/
 Quaternion q = {{1, 0, 0, 0}}; // Stato iniziale
@@ -154,6 +158,29 @@ void Take_IMU_Measurements(BMI088 *imu)
 }
 
 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if(htim->Instance == TIM2)
+    {
+        // Code to execute at constant sample rate
+        Take_IMU_Measurements(&imu);
+
+        float dt = 0.001f; // 1ms
+        UpdateQuaternion(&q, gyr, dt);
+        CorrectQuaternionWithAccel(&q, acc, 0.9f);
+        QuaternionToEuler(q, angles);
+
+
+		API_PrintAngles(timestamp, angles);
+		//float gyrArr[3] = {gyr.x, gyr.y, gyr.z};
+		//float accArr[3] = {acc.x, acc.y, acc.z};
+		//API_SendInertial(HAL_GetTick(), gyrArr, accArr);
+
+		timestamp++;	// everytime
+    }
+}
+
+
 void Toggle()
 {
 	// Toggle to show if the code is running
@@ -201,63 +228,30 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
+  MX_TIM2_Init();
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_Delay(1000);
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
+  //EKF_CalculateGyroBias(&imu, 500);
+  SetQuaternionFromEuler(&q, 0, 0, 0);	// Angles on the starting position: roll=0, pitch=0, yaw=0
+  HAL_Delay(1000);
+
+  HAL_TIM_Base_Start_IT(&htim2);   // Start timer
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  EKF_CalculateGyroBias(&imu, 500);
-  SetQuaternionFromEuler(&q, 0, 0, 0);	// Angles on the starting position: roll=0, pitch=0, yaw=0
-  HAL_Delay(1000);
-
-
   while (1)
   {
 
-	if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
-	{
-		Take_IMU_Measurements(&imu);
-		//EKF_FindAngles(acc, gyr, angles);
-
-		float dt = (float)((float)(HAL_GetTick() - timerUSB)) / 1000;
-		timerUSB = HAL_GetTick();
-
-		UpdateQuaternion(&q, gyr, dt);
-		CorrectQuaternionWithAccel(&q, acc, 0.9);
-		QuaternionToEuler(q, angles);
-
-		//Toggle();
+	  Toggle();
 
 
-/*------- DISPLAY ON SERIAL OR API -----------------------------------*/
-//#ifdef USE_SERIAL
-		if(SERIAL_OR_API)
-		{
-			//Serial_PrintAcc(acc[0], acc[1], acc[2]);
-			//Serial_PrintGyr(gyr[0], gyr[1], gyr[2]);
-			//Serial_PrintAngles(angles[0], angles[1], angles[2]);
-			//Serial_GyroBias(bias[0], bias[1], bias[2]);
-		}
-//#endif //USE_API
-//#ifdef USE_API
-		else
-		{
-			//float angles[3] = {angle.roll, angle.pitch, angle.yaw};
-			API_PrintAngles(1000*HAL_GetTick(), angles);
-			//API_SendInertial(1000*HAL_GetTick(), gyr, acc);
-			float gyrArr[3] = {gyr.x, gyr.y, gyr.z};
-			float accArr[3] = {acc.x, acc.y, acc.z};
-			API_SendInertial(HAL_GetTick(), gyrArr, accArr);
-		}
-//#endif //USE_API
-/*---------------------------------------------------------------------*/
-	}
+
 
     /* USER CODE END WHILE */
 
@@ -346,6 +340,51 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 42-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 10000-1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 

@@ -11,7 +11,7 @@
 
 //#ifdef USE_API
 
-extern char txBuff[128];
+
 
 
 /// Function Declarations
