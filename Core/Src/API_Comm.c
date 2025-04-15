@@ -65,6 +65,7 @@ void API_PrintAngles(uint32_t timestamp, float* angle)
 	// Trasmetti
 	CDC_Transmit_FS((uint8_t *) txBuff, idx);*/
 	/*------------------------------*/
+	//while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
 	CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
 }
 
@@ -77,7 +78,8 @@ void API_SendInertial(uint32_t timestamp, float* gyro, float* accel)
 {
 	char txBuff[128];
 	sprintf(txBuff, "I,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n", timestamp, gyro[0], gyro[1], gyro[2], accel[0], accel[1], accel[2]);
-	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+	//while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+	CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
 }
 
 

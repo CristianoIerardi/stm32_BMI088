@@ -1,2 +1,2 @@
 ../Core/Src/API_Comm.c:24:6:API_PrintAngles	1
-../Core/Src/API_Comm.c:76:6:API_SendInertial	2
+../Core/Src/API_Comm.c:77:6:API_SendInertial	1
