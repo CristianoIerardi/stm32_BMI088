@@ -22,12 +22,12 @@
 #ifndef __MAIN_H
 #define __MAIN_H
 
-/*------------------------------------------------------*/
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-/*------------------------------------------------------*/
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
-
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -58,6 +58,7 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 extern char txBuff[128];
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

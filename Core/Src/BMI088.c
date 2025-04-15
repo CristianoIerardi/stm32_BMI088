@@ -59,10 +59,10 @@ uint8_t BMI088_Init(BMI088 *imu,
 	HAL_Delay(10);
 
 	/* Configure accelerometer  */
-	status += BMI088_WriteAccRegister(imu, BMI_ACC_CONF, 0xA8); /* (no oversampling, ODR = 100 Hz, BW = 40 Hz) */
+	status += BMI088_WriteAccRegister(imu, BMI_ACC_CONF, 0x09); /* (no oversampling, ODR = 200 Hz, BW = ?? Hz /////////////////////////BW = 40 Hz) */
 	HAL_Delay(10);
 
-	status += BMI088_WriteAccRegister(imu, BMI_ACC_RANGE, 0x00); /* +- 3g range */
+	status += BMI088_WriteAccRegister(imu, BMI_ACC_RANGE, 0x01); /* +- 6g range */
 	HAL_Delay(10);
 
 	/* Enable accelerometer data ready interrupt */
@@ -112,7 +112,7 @@ uint8_t BMI088_Init(BMI088 *imu,
 	status += BMI088_WriteGyrRegister(imu, BMI_GYR_RANGE, 0x01); /* +- 1000 deg/s */
 	HAL_Delay(10);
 
-	status += BMI088_WriteGyrRegister(imu, BMI_GYR_BANDWIDTH, 0x07); /* ODR = 100 Hz, Filter bandwidth = 32 Hz */
+	status += BMI088_WriteGyrRegister(imu, BMI_GYR_BANDWIDTH, 0x06); /* ODR = 200 Hz, Filter bandwidth = 64 Hz */
 	HAL_Delay(10);
 
 	/* Enable gyroscope data ready interrupt */
@@ -268,7 +268,11 @@ uint8_t BMI088_ReadGyroscope(BMI088 *imu) {
  */
 uint8_t BMI088_ReadAccelerometerDMA(BMI088 *imu) {
 
+	if (imu->readingAcc)  // To not have double calls
+		return 0;
+
 	HAL_GPIO_WritePin(imu->csAccPinBank, imu->csAccPin, GPIO_PIN_RESET);
+
 	if (HAL_SPI_TransmitReceive_DMA(imu->spiHandle, imu->accTxBuf, (uint8_t *) imu->accRxBuf, 8) == HAL_OK) {
 
 		imu->readingAcc = 1;
@@ -301,6 +305,9 @@ void BMI088_ReadAccelerometerDMA_Complete(BMI088 *imu) {
 }
 
 uint8_t BMI088_ReadGyroscopeDMA(BMI088 *imu) {
+
+	if (imu->readingGyr)  // To not have double calls
+		return 0;
 
 	HAL_GPIO_WritePin(imu->csGyrPinBank, imu->csGyrPin, GPIO_PIN_RESET);
 	if (HAL_SPI_TransmitReceive_DMA(imu->spiHandle, imu->gyrTxBuf, (uint8_t *) imu->gyrRxBuf, 7) == HAL_OK) {

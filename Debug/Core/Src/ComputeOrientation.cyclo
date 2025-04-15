@@ -1,0 +1,5 @@
+../Core/Src/ComputeOrientation.c:25:6:SetQuaternionFromEuler	1
+../Core/Src/ComputeOrientation.c:46:6:NormalizeQuaternion	2
+../Core/Src/ComputeOrientation.c:58:6:UpdateQuaternion	1
+../Core/Src/ComputeOrientation.c:79:6:CorrectQuaternionWithAccel	1
+../Core/Src/ComputeOrientation.c:100:6:QuaternionToEuler	2

@@ -15,7 +15,7 @@
 
 /// Function declarations
 
-void EKF_CalculateGyroBias(BMI088* imu, int samples, float *ret_bias);
+void EKF_CalculateGyroBias(BMI088* imu, int samples);
 
 void EKF_Predict(float dt, float gyro_data[3]);
 

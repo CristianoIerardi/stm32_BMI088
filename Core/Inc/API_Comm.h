@@ -11,11 +11,13 @@
 
 //#ifdef USE_API
 
-extern char txBuff[128];
+
 
 
 /// Function Declarations
-void API_PrintAngles(uint32_t timestamp, float r, float p, float y);
+void API_PrintAngles(uint32_t timestamp, float* angle);
+
+void API_SendInertial(uint32_t timestamp, float* gyro, float* accel);
 
 
 

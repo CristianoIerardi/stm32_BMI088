@@ -15,7 +15,7 @@
 #include "EKF.h"
 #include <stdint.h> 	// → It defines uint32_t e uint8_t
 #include <math.h> 		// → Needed for atan2f and sqrtf
-#include <stdio.h> 		// → Needed for sprintf and snprintf
+//#include <stdio.h> 		// → Needed for sprintf and snprintf
 
 /*----- Communication Libraries ------------------------*/
 //#ifdef USE_SERIAL
@@ -36,11 +36,12 @@
 
 /*---------------------------------------------------------------*/
 /// Global variables
-float state[3] = {0};  // [roll, pitch, yaw]
+float state[3] = {0,0,0};  // [roll, pitch, yaw]
 float P[3][3] = {{0.1, 0, 0}, {0, 0.1, 0}, {0, 0, 0.1}};
 float Q[3][3] = {{0.3, 0, 0}, {0, 0.3, 0}, {0, 0, 0.3}};
 float R[2][2] = {{0.3, 0}, {0, 0.3}};
-float gyro_bias[3] = {0};
+
+float gyro_bias[3] = {0,0,0};
 uint32_t prev_time;
 
 
@@ -50,17 +51,17 @@ uint32_t prev_time;
  * @param samples number of samples to calculate the mean average bias
  * @param ret_bias address (array) where to write the calculated bias values
  */
-void EKF_CalculateGyroBias(BMI088* imu, int samples, float *ret_bias)
+void EKF_CalculateGyroBias(BMI088* imu, int cycles)
 {
-    float bias[3] = {0};
+    float bias[3] = {0,0,0};
 
-    for (int i = 0; i < samples; i++) {
+    for (int i = 0; i < cycles; i++) {
         bias[0] += imu->gyr_rps[0];
         bias[1] += imu->gyr_rps[1];
         bias[2] += imu->gyr_rps[2];
     }
     for (int i = 0; i < 3; i++) {
-        gyro_bias[i] = bias[i] / samples;
+        gyro_bias[i] = bias[i] / cycles;
     }
 }
 
@@ -71,7 +72,7 @@ void EKF_CalculateGyroBias(BMI088* imu, int samples, float *ret_bias)
  */
 void EKF_Predict(float dt, float gyro_data[3])
 {
-    float gx = gyro_data[0]; //- gyro_bias[0];
+    float gx = gyro_data[0] - gyro_bias[0];
     float gy = gyro_data[1] - gyro_bias[1];
     float gz = gyro_data[2] - gyro_bias[2];
 

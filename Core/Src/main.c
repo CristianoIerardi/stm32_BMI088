@@ -27,9 +27,10 @@
 #include "BMI088.h"
 #include <stdio.h>
 #include "EKF.h"
+#include "ComputeOrientation.h"
 
 //#ifdef USE_SERIAL
-	#include "Serial_Comm.h"
+	//#include "Serial_Comm.h"
 //#endif //USE_SERIAL
 //#ifdef USE_API
 	#include "API_Comm.h"
@@ -49,8 +50,8 @@
 #define SERIAL_OR_API  		0 	// 0 if we use API
 								// 1 if we use SERIAL
 
-#define SAMPLE_TIME_MS_USB  10
-#define SAMPLE_TIME_MS_TOGGLE  500
+#define SAMPLE_TIME_MS_USB  	10
+#define SAMPLE_TIME_MS_TOGGLE  	500
 
 /* USER CODE END PD */
 
@@ -65,6 +66,9 @@ SPI_HandleTypeDef hspi1;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
 
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+
 /* USER CODE BEGIN PV */
 BMI088 imu;
 
@@ -75,38 +79,58 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
+void Take_IMU_Measurements(BMI088 *imu);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 /// Global variables
+const float f_CK = 84000000; 				// [Hz] clock frequency. See .ioc files
+float T_TIM2 = 0;							// seconds. This is the call period of the timer TIM2
 
-char txBuff[128];
-float acc[3] = {0,0,0};
-float gyr[3] = {0,0,0};
-float angles[3] = {0,0,0};
-float bias[3] = {0,0,0};
+//char main_txBuff[128];
+/*float acc[3] = {0,0,0};
+float gyr[3] = {0,0,0};*/
+float angles[3] = {0,0,0};					// euler angles
+//float bias[3] = {0,0,0};
+
+uint32_t timestamp_TIM3 = 0;				// Number of times that TIM3 is called
+uint32_t timestamp_TIM2 = 0;				// Number of times that TIM2 is called
+
+uint32_t measureTick = 0;					// Tick corresponding to the timestamp of the current measurement
+
+/*------------------*/
+Quaternion q = {1, 0, 0, 0}; 					// Initial state
+Vector3 gyr = {0.0f, 0.0f, 0.0f}; 				// gyro data
+Vector3 acc = {0.0f, 0.0f, 0.0f}; 				// acc data
+//EulerAngles angle = {{0.0f, 0.0f, 0.0f}};
+/*------------------*/
 
 // Timers:
 uint32_t timerUSB = 0;
 uint32_t timerToggle = 0;
 
 
-
+/////////// DMA Reading
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
 	if(GPIO_Pin == INT_ACC_Pin)
 	{
 		// we check if the interrupt pin is the accelerometer one
-		BMI088_ReadAccelerometerDMA(&imu);	// if yes read from the DMA memory
+		if (!imu.readingAcc)
+			BMI088_ReadAccelerometerDMA(&imu);	// if yes read from the DMA memory
 	}
 	else if(GPIO_Pin == INT_GYR_Pin)
 	{
 		// we check if the interrupt pin is the gyroscope one
-		BMI088_ReadGyroscopeDMA(&imu);
+		if (!imu.readingGyr)
+			BMI088_ReadGyroscopeDMA(&imu);
 	}
+
 }
 
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the transfer has been completed
@@ -116,6 +140,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 		if (imu.readingAcc)
 		{
 			BMI088_ReadAccelerometerDMA_Complete(&imu);
+
 		}
 
 		if (imu.readingGyr)
@@ -126,21 +151,72 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 }
 
 
+/* Callback of the timers */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	// Calculate angles with quaternions
+    if(htim->Instance == TIM2)
+    {
+        // Code to execute at constant sample rate
+        Take_IMU_Measurements(&imu);
+
+        UpdateQuaternion(&q, gyr, T_TIM2);
+        CorrectQuaternionWithAccel(&q, acc, 0.9f);
+        QuaternionToEuler(q, angles);
+
+        timestamp_TIM3++;	// how many times TIM2 is called
+    }
+
+    // Send data with CDC_Transfer_FS
+    if(htim->Instance == TIM3)
+	{
+		/* Code to send data with CDC_Transfer_FS */
+
+		//API_PrintAngles(HAL_GetTick(), angles);
+		//float gyrArr[3] = {gyr.x, gyr.y, gyr.z};
+		//float accArr[3] = {acc.x, acc.y, acc.z};
+		//API_SendInertial(HAL_GetTick(), gyrArr, accArr);
+
+		timestamp_TIM3++;	// how many times TIM3 is called
+
+	// Send every data using just one string and one TX
+		char txBuff[256];
+		//sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n", measureTick, angles[0], angles[1], angles[2],measureTick, gyrArr[0], gyrArr[1], gyrArr[2], accArr[0], accArr[1], accArr[2]);
+		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n",
+				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z);
+		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
+
+	}
+}
+
+
+/* Function to insert IMU measurements from memory to memory (data is adjusted) */
 void Take_IMU_Measurements(BMI088 *imu)
 {
+	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
+
+	/*
 	acc[0] = imu->acc_mps2[0];
 	acc[1] = imu->acc_mps2[1];
 	acc[2] = imu->acc_mps2[2];
 	gyr[0] = imu->gyr_rps[0];
 	gyr[1] = imu->gyr_rps[1];
-	gyr[2] = imu->gyr_rps[2];
+	gyr[2] = imu->gyr_rps[2];*/
+
+	gyr.y = -imu->gyr_rps[0];
+	gyr.x = imu->gyr_rps[1];
+	gyr.z = imu->gyr_rps[2];
+	acc.y = -imu->acc_mps2[0];
+	acc.x = imu->acc_mps2[1];
+	acc.z = imu->acc_mps2[2];
+
 }
 
-
-void Toggle()
+/* Function that toggles the led of the board to show if the device is working */
+void Toggle(uint32_t waitingTime)
 {
 	// Toggle to show if the code is running
-	if ((HAL_GetTick() - timerToggle) >= SAMPLE_TIME_MS_TOGGLE)
+	if ((HAL_GetTick() - timerToggle) >= waitingTime)
 	{
 		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
 		timerToggle = HAL_GetTick();
@@ -148,8 +224,38 @@ void Toggle()
 	timerUSB = HAL_GetTick();
 }
 
+void Debug_SPI_DMA()
+{
 
+  	HAL_SPI_StateTypeDef spiState = imu.spiHandle->State;
+  	HAL_DMA_StateTypeDef dmaRxState = imu.spiHandle->hdmarx->State;
 
+  	char txBuff[32];
+  	sprintf(txBuff, "%u\t%u\n\r", spiState, dmaRxState);
+  	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+
+  	if (__HAL_DMA_GET_IT_SOURCE(imu.spiHandle->hdmarx, DMA_IT_TC) == RESET)
+  	{
+  		sprintf(txBuff, "#\n\r");
+  		while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+  	}
+}
+
+//////////////// POLLING READING
+/*void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == INT_ACC_Pin)
+	{
+		// Lettura accelerometro in modalità polling
+		BMI088_ReadAccelerometer(&imu);
+		Toggle();
+	}
+	else if(GPIO_Pin == INT_GYR_Pin)
+	{
+		// Lettura giroscopio in modalità polling
+		BMI088_ReadGyroscope(&imu);
+	}
+}*/
 
 
 /* USER CODE END 0 */
@@ -185,52 +291,46 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
+  MX_TIM2_Init();
   MX_USB_DEVICE_Init();
-
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
+  /*.... Priorities ....................*/
+  HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_2);
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
+
+  /*....................................*/
 
   HAL_Delay(1000);
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
+  //EKF_CalculateGyroBias(&imu, 500);
+  SetQuaternionFromEuler(&q, 0, 0, 0);	// Angles on the starting position: roll=0, pitch=0, yaw=0
+  HAL_Delay(1000);
+
+  /* ----- START TIMERS ------------------------------------------------------- */
+  HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
+  HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
+  /* -------------------------------------------------------------------------- */
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  //EKF_CalculateGyroBias(&imu, 500, bias);
-  HAL_Delay(1000);
-
 
   while (1)
   {
-	if ((HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
-	{
-		Take_IMU_Measurements(&imu);
-		EKF_FindAngles(acc, gyr, angles);
 
-		Toggle();
+	  //Debug_SPI_DMA();
+	  Toggle(SAMPLE_TIME_MS_TOGGLE);
 
 
-/*------- DISPLAY ON SERIAL OR API -----------------------------------*/
-//#ifdef USE_SERIAL
-		if(SERIAL_OR_API)
-		{
-			Serial_PrintAcc(acc[0], acc[1], acc[2]);
-			Serial_PrintGyr(gyr[0], gyr[1], gyr[2]);
-			Serial_PrintAngles(angles[0], angles[1], angles[2]);
-			//Serial_GyroBias(bias[0], bias[1], bias[2]);
-		}
-//#endif //USE_API
-//#ifdef USE_API
-		else
-		{
-			API_PrintAngles(HAL_GetTick(), angles[0], angles[1], angles[2]);
-		}
-//#endif //USE_API
-/*---------------------------------------------------------------------*/
-	}
 
     /* USER CODE END WHILE */
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -320,6 +420,97 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 42-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 10000-1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+	T_TIM2 = 1.0f / (f_CK / (float)((htim2.Init.Period +1 ) * htim2.Init.Prescaler + 1));
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 42-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 10000-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -333,7 +524,7 @@ static void MX_DMA_Init(void)
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
   /* DMA2_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
 
 }
@@ -392,10 +583,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -413,6 +604,11 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+
+	char txBuff[128];
+	sprintf(txBuff, "SPI Error!");
+	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)
