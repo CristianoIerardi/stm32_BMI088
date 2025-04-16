@@ -28,6 +28,7 @@
 #include <stdio.h>
 #include "EKF.h"
 #include "ComputeOrientation.h"
+#include "LPF.h"
 
 //#ifdef USE_SERIAL
 	//#include "Serial_Comm.h"
@@ -71,6 +72,7 @@ TIM_HandleTypeDef htim3;
 
 /* USER CODE BEGIN PV */
 BMI088 imu;
+LPF_FILTER filt;
 
 /* USER CODE END PV */
 
@@ -110,12 +112,19 @@ Vector3 acc = {0.0f, 0.0f, 0.0f}; 				// acc data
 //EulerAngles angle = {{0.0f, 0.0f, 0.0f}};
 /*------------------*/
 
-// Timers:
+//////////// Timers:
 uint32_t timerUSB = 0;
 uint32_t timerToggle = 0;
 
+///////////// Filter params
+float f_LP_gyr = 15.0f; // LP freq cut frequency in Hz of gyro
+float f_LP_acc = 20.0f; // LP freq cut frequency in Hz of acc
 
-/////////// DMA Reading
+float f_HP_gyr = 0.0001f; // HP freq cut frequency in Hz of gyro
+float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
+
+
+/// DMA Reading
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
 	if(GPIO_Pin == INT_ACC_Pin)
@@ -132,7 +141,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 
 }
-
+/// DMA CALLBACK
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the transfer has been completed
 {
 	if(hspi->Instance == SPI1)		// Check if it is the correct SPI (we want SPI1)
@@ -151,7 +160,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 }
 
 
-/* Callback of the timers */
+/// Callback of the timers
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	// Calculate angles with quaternions
@@ -160,9 +169,26 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         // Code to execute at constant sample rate
         Take_IMU_Measurements(&imu);
 
+        /*filt = LPF_Update_All(&filt, gyr, acc);
+        gyr.x = filt.filt_gyr_x[1];
+        gyr.y = filt.filt_gyr_y[1];
+        gyr.z = filt.filt_gyr_z[1];
+        acc.x = filt.filt_acc_x[1];
+		acc.y = filt.filt_acc_y[1];
+		acc.z = filt.filt_acc_z[1];*/
+
+        /*filt = HPF_Update_All(&filt, gyr, acc);
+        gyr.x = filt.filt_gyr_x[1];
+        gyr.y = filt.filt_gyr_y[1];
+        gyr.z = filt.filt_gyr_z[1];
+        acc.x = filt.filt_acc_x[1];
+		acc.y = filt.filt_acc_y[1];
+		acc.z = filt.filt_acc_z[1];*/
+
         UpdateQuaternion(&q, gyr, T_TIM2);
         CorrectQuaternionWithAccel(&q, acc, 0.9f);
         QuaternionToEuler(q, angles);
+
 
         timestamp_TIM3++;	// how many times TIM2 is called
     }
@@ -181,7 +207,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 	// Send every data using just one string and one TX
 		char txBuff[256];
-		//sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n", measureTick, angles[0], angles[1], angles[2],measureTick, gyrArr[0], gyrArr[1], gyrArr[2], accArr[0], accArr[1], accArr[2]);
 		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n",
 				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z);
 		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
@@ -190,7 +215,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 }
 
 
-/* Function to insert IMU measurements from memory to memory (data is adjusted) */
+/// Function to insert IMU measurements from memory to memory (data is adjusted)
 void Take_IMU_Measurements(BMI088 *imu)
 {
 	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
@@ -212,7 +237,7 @@ void Take_IMU_Measurements(BMI088 *imu)
 
 }
 
-/* Function that toggles the led of the board to show if the device is working */
+/// Function that toggles the led of the board to show if the device is working
 void Toggle(uint32_t waitingTime)
 {
 	// Toggle to show if the code is running
@@ -224,6 +249,7 @@ void Toggle(uint32_t waitingTime)
 	timerUSB = HAL_GetTick();
 }
 
+/// Function to show some SPI and DMA parameter
 void Debug_SPI_DMA()
 {
 
@@ -240,6 +266,9 @@ void Debug_SPI_DMA()
   		while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
   	}
 }
+
+
+
 
 //////////////// POLLING READING
 /*void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -303,13 +332,15 @@ int main(void)
   HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
 
   /*....................................*/
-
   HAL_Delay(1000);
+
+
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
   //EKF_CalculateGyroBias(&imu, 500);
-  SetQuaternionFromEuler(&q, 0, 0, 0);	// Angles on the starting position: roll=0, pitch=0, yaw=0
-  HAL_Delay(1000);
+  SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
+  Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, T_TIM2);
 
+  HAL_Delay(1000);
   /* ----- START TIMERS ------------------------------------------------------- */
   HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
   HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface

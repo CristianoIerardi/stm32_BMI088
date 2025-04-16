@@ -12,6 +12,7 @@ C_SRCS += \
 ../Core/Src/FusionAhrs.c \
 ../Core/Src/FusionCompass.c \
 ../Core/Src/FusionOffset.c \
+../Core/Src/LPF.c \
 ../Core/Src/Serial_Comm.c \
 ../Core/Src/main.c \
 ../Core/Src/stm32f4xx_hal_msp.c \
@@ -29,6 +30,7 @@ OBJS += \
 ./Core/Src/FusionAhrs.o \
 ./Core/Src/FusionCompass.o \
 ./Core/Src/FusionOffset.o \
+./Core/Src/LPF.o \
 ./Core/Src/Serial_Comm.o \
 ./Core/Src/main.o \
 ./Core/Src/stm32f4xx_hal_msp.o \
@@ -46,6 +48,7 @@ C_DEPS += \
 ./Core/Src/FusionAhrs.d \
 ./Core/Src/FusionCompass.d \
 ./Core/Src/FusionOffset.d \
+./Core/Src/LPF.d \
 ./Core/Src/Serial_Comm.d \
 ./Core/Src/main.d \
 ./Core/Src/stm32f4xx_hal_msp.d \
@@ -63,7 +66,7 @@ Core/Src/%.o Core/Src/%.su Core/Src/%.cyclo: ../Core/Src/%.c Core/Src/subdir.mk
 clean: clean-Core-2f-Src
 
 clean-Core-2f-Src:
-	-$(RM) ./Core/Src/API_Comm.cyclo ./Core/Src/API_Comm.d ./Core/Src/API_Comm.o ./Core/Src/API_Comm.su ./Core/Src/BMI088.cyclo ./Core/Src/BMI088.d ./Core/Src/BMI088.o ./Core/Src/BMI088.su ./Core/Src/ComputeOrientation.cyclo ./Core/Src/ComputeOrientation.d ./Core/Src/ComputeOrientation.o ./Core/Src/ComputeOrientation.su ./Core/Src/EKF.cyclo ./Core/Src/EKF.d ./Core/Src/EKF.o ./Core/Src/EKF.su ./Core/Src/FusionAhrs.cyclo ./Core/Src/FusionAhrs.d ./Core/Src/FusionAhrs.o ./Core/Src/FusionAhrs.su ./Core/Src/FusionCompass.cyclo ./Core/Src/FusionCompass.d ./Core/Src/FusionCompass.o ./Core/Src/FusionCompass.su ./Core/Src/FusionOffset.cyclo ./Core/Src/FusionOffset.d ./Core/Src/FusionOffset.o ./Core/Src/FusionOffset.su ./Core/Src/Serial_Comm.cyclo ./Core/Src/Serial_Comm.d ./Core/Src/Serial_Comm.o ./Core/Src/Serial_Comm.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32f4xx_hal_msp.cyclo ./Core/Src/stm32f4xx_hal_msp.d ./Core/Src/stm32f4xx_hal_msp.o ./Core/Src/stm32f4xx_hal_msp.su ./Core/Src/stm32f4xx_it.cyclo ./Core/Src/stm32f4xx_it.d ./Core/Src/stm32f4xx_it.o ./Core/Src/stm32f4xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32f4xx.cyclo ./Core/Src/system_stm32f4xx.d ./Core/Src/system_stm32f4xx.o ./Core/Src/system_stm32f4xx.su ./Core/Src/utils.cyclo ./Core/Src/utils.d ./Core/Src/utils.o ./Core/Src/utils.su
+	-$(RM) ./Core/Src/API_Comm.cyclo ./Core/Src/API_Comm.d ./Core/Src/API_Comm.o ./Core/Src/API_Comm.su ./Core/Src/BMI088.cyclo ./Core/Src/BMI088.d ./Core/Src/BMI088.o ./Core/Src/BMI088.su ./Core/Src/ComputeOrientation.cyclo ./Core/Src/ComputeOrientation.d ./Core/Src/ComputeOrientation.o ./Core/Src/ComputeOrientation.su ./Core/Src/EKF.cyclo ./Core/Src/EKF.d ./Core/Src/EKF.o ./Core/Src/EKF.su ./Core/Src/FusionAhrs.cyclo ./Core/Src/FusionAhrs.d ./Core/Src/FusionAhrs.o ./Core/Src/FusionAhrs.su ./Core/Src/FusionCompass.cyclo ./Core/Src/FusionCompass.d ./Core/Src/FusionCompass.o ./Core/Src/FusionCompass.su ./Core/Src/FusionOffset.cyclo ./Core/Src/FusionOffset.d ./Core/Src/FusionOffset.o ./Core/Src/FusionOffset.su ./Core/Src/LPF.cyclo ./Core/Src/LPF.d ./Core/Src/LPF.o ./Core/Src/LPF.su ./Core/Src/Serial_Comm.cyclo ./Core/Src/Serial_Comm.d ./Core/Src/Serial_Comm.o ./Core/Src/Serial_Comm.su ./Core/Src/main.cyclo ./Core/Src/main.d ./Core/Src/main.o ./Core/Src/main.su ./Core/Src/stm32f4xx_hal_msp.cyclo ./Core/Src/stm32f4xx_hal_msp.d ./Core/Src/stm32f4xx_hal_msp.o ./Core/Src/stm32f4xx_hal_msp.su ./Core/Src/stm32f4xx_it.cyclo ./Core/Src/stm32f4xx_it.d ./Core/Src/stm32f4xx_it.o ./Core/Src/stm32f4xx_it.su ./Core/Src/syscalls.cyclo ./Core/Src/syscalls.d ./Core/Src/syscalls.o ./Core/Src/syscalls.su ./Core/Src/sysmem.cyclo ./Core/Src/sysmem.d ./Core/Src/sysmem.o ./Core/Src/sysmem.su ./Core/Src/system_stm32f4xx.cyclo ./Core/Src/system_stm32f4xx.d ./Core/Src/system_stm32f4xx.o ./Core/Src/system_stm32f4xx.su ./Core/Src/utils.cyclo ./Core/Src/utils.d ./Core/Src/utils.o ./Core/Src/utils.su
 
 .PHONY: clean-Core-2f-Src
 
