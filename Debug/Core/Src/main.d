@@ -41,7 +41,8 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/ST/STM32_USB_Device_Library/Core/Inc/usbd_ctlreq.h \
  ../Core/Inc/BMI088.h ../Core/Inc/EKF.h ../Core/Inc/BMI088.h \
  ../Core/Inc/ComputeOrientation.h ../Core/Inc/LPF.h \
- ../Core/Inc/ComputeOrientation.h ../Core/Inc/API_Comm.h
+ ../Core/Inc/ComputeOrientation.h ../Core/Inc/MadgwickAHRS.h \
+ ../Core/Inc/API_Comm.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -90,4 +91,5 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/ComputeOrientation.h:
 ../Core/Inc/LPF.h:
 ../Core/Inc/ComputeOrientation.h:
+../Core/Inc/MadgwickAHRS.h:
 ../Core/Inc/API_Comm.h:

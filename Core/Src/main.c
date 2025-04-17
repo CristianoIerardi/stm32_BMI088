@@ -29,6 +29,7 @@
 #include "EKF.h"
 #include "ComputeOrientation.h"
 #include "LPF.h"
+#include "MadgwickAHRS.h"
 
 //#ifdef USE_SERIAL
 	//#include "Serial_Comm.h"
@@ -93,6 +94,7 @@ void Take_IMU_Measurements(BMI088 *imu);
 /// Global variables
 const float f_CK = 84000000; 				// [Hz] clock frequency. See .ioc files
 float T_TIM2 = 0;							// seconds. This is the call period of the timer TIM2
+float F_TIM2 = 0;
 
 //char main_txBuff[128];
 /*float acc[3] = {0,0,0};
@@ -111,6 +113,8 @@ Vector3 gyr = {0.0f, 0.0f, 0.0f}; 				// gyro data
 Vector3 acc = {0.0f, 0.0f, 0.0f}; 				// acc data
 //EulerAngles angle = {{0.0f, 0.0f, 0.0f}};
 
+
+
 float abs_acc = 0.0f;
 float abs_acc_th = 0.2f;
 /*------------------*/
@@ -126,6 +130,59 @@ float f_LP_acc = 20.0f; // LP freq cut frequency in Hz of acc
 float f_HP_gyr = 0.0001f; // HP freq cut frequency in Hz of gyro
 float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
 
+
+
+/// Function that toggles the led of the board to show if the device is working
+void Toggle(uint32_t waitingTime)
+{
+	// Toggle to show if the code is running
+	if ((HAL_GetTick() - timerToggle) >= waitingTime)
+	{
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+		timerToggle = HAL_GetTick();
+	}
+	timerUSB = HAL_GetTick();
+}
+
+/// Function to show some SPI and DMA parameter
+void Debug_SPI_DMA()
+{
+
+  	HAL_SPI_StateTypeDef spiState = imu.spiHandle->State;
+  	HAL_DMA_StateTypeDef dmaRxState = imu.spiHandle->hdmarx->State;
+
+  	char txBuff[32];
+  	sprintf(txBuff, "%u\t%u\n\r", spiState, dmaRxState);
+  	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+
+  	if (__HAL_DMA_GET_IT_SOURCE(imu.spiHandle->hdmarx, DMA_IT_TC) == RESET)
+  	{
+  		sprintf(txBuff, "#\n\r");
+  		while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+  	}
+}
+
+/// Function to insert IMU measurements from memory to memory (data is adjusted)
+void Take_IMU_Measurements(BMI088 *imu)
+{
+	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
+
+	/*
+	acc[0] = imu->acc_mps2[0];
+	acc[1] = imu->acc_mps2[1];
+	acc[2] = imu->acc_mps2[2];
+	gyr[0] = imu->gyr_rps[0];
+	gyr[1] = imu->gyr_rps[1];
+	gyr[2] = imu->gyr_rps[2];*/
+
+	gyr.y = -imu->gyr_rps[0];
+	gyr.x = imu->gyr_rps[1];
+	gyr.z = imu->gyr_rps[2];
+	acc.y = -imu->acc_mps2[0];
+	acc.x = imu->acc_mps2[1];
+	acc.z = imu->acc_mps2[2];
+
+}
 
 /// DMA Reading
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -172,13 +229,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         // Code to execute at constant sample rate
         Take_IMU_Measurements(&imu);
 
-        /*filt = LPF_Update_All(&filt, gyr, acc);
+        filt = LPF_Update_All(&filt, gyr, acc);
         gyr.x = filt.filt_gyr_x[1];
         gyr.y = filt.filt_gyr_y[1];
         gyr.z = filt.filt_gyr_z[1];
         acc.x = filt.filt_acc_x[1];
 		acc.y = filt.filt_acc_y[1];
-		acc.z = filt.filt_acc_z[1];*/
+		acc.z = filt.filt_acc_z[1];
 
         /*filt = HPF_Update_All(&filt, gyr, acc);
         gyr.x = filt.filt_gyr_x[1];
@@ -188,8 +245,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		acc.y = filt.filt_acc_y[1];
 		acc.z = filt.filt_acc_z[1];*/
 
-        UpdateQuaternion(&q, gyr, T_TIM2);
-        CorrectQuaternionWithAccel(&q, acc, 0.9f);
+        //EKF_UpdateIMU(gyr, acc, T_TIM2, &q);
+        //UpdateQuaternion(&q, gyr, T_TIM2);
+        //CorrectQuaternionWithAccel(&q, acc, 0.9f);
+
+        MadgwickAHRSupdateIMU(gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, F_TIM2);
+        q.w = q0; q.x = q1; q.y = q2; q.z = q3;
+        QuaternionToEuler(q, angles);
         QuaternionToEuler(q, angles);
 
         abs_acc = sqrt(pow(acc.x,2)+pow(acc.y,2) + pow(acc.z,2));
@@ -219,77 +281,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
-
-/// Function to insert IMU measurements from memory to memory (data is adjusted)
-void Take_IMU_Measurements(BMI088 *imu)
-{
-	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
-
-	/*
-	acc[0] = imu->acc_mps2[0];
-	acc[1] = imu->acc_mps2[1];
-	acc[2] = imu->acc_mps2[2];
-	gyr[0] = imu->gyr_rps[0];
-	gyr[1] = imu->gyr_rps[1];
-	gyr[2] = imu->gyr_rps[2];*/
-
-	gyr.y = -imu->gyr_rps[0];
-	gyr.x = imu->gyr_rps[1];
-	gyr.z = imu->gyr_rps[2];
-	acc.y = -imu->acc_mps2[0];
-	acc.x = imu->acc_mps2[1];
-	acc.z = imu->acc_mps2[2];
-
-}
-
-/// Function that toggles the led of the board to show if the device is working
-void Toggle(uint32_t waitingTime)
-{
-	// Toggle to show if the code is running
-	if ((HAL_GetTick() - timerToggle) >= waitingTime)
-	{
-		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
-		timerToggle = HAL_GetTick();
-	}
-	timerUSB = HAL_GetTick();
-}
-
-/// Function to show some SPI and DMA parameter
-void Debug_SPI_DMA()
-{
-
-  	HAL_SPI_StateTypeDef spiState = imu.spiHandle->State;
-  	HAL_DMA_StateTypeDef dmaRxState = imu.spiHandle->hdmarx->State;
-
-  	char txBuff[32];
-  	sprintf(txBuff, "%u\t%u\n\r", spiState, dmaRxState);
-  	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
-
-  	if (__HAL_DMA_GET_IT_SOURCE(imu.spiHandle->hdmarx, DMA_IT_TC) == RESET)
-  	{
-  		sprintf(txBuff, "#\n\r");
-  		while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
-  	}
-}
-
-
-
-
-//////////////// POLLING READING
-/*void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-	if(GPIO_Pin == INT_ACC_Pin)
-	{
-		// Lettura accelerometro in modalità polling
-		BMI088_ReadAccelerometer(&imu);
-		Toggle();
-	}
-	else if(GPIO_Pin == INT_GYR_Pin)
-	{
-		// Lettura giroscopio in modalità polling
-		BMI088_ReadGyroscope(&imu);
-	}
-}*/
 
 
 /* USER CODE END 0 */
@@ -341,11 +332,13 @@ int main(void)
 
 
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
-  EKF_CalculateGyroBias(&imu, 500);
+  //EKF_CalculateGyroBias(&imu, 500);
   SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
   Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, T_TIM2);
 
   HAL_Delay(1000);
+
+  //EKF_Init(&q);
   /* ----- START TIMERS ------------------------------------------------------- */
   HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
   HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
@@ -497,6 +490,7 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
 	T_TIM2 = 1.0f / (f_CK / (float)((htim2.Init.Period +1 ) * htim2.Init.Prescaler + 1));
+	F_TIM2 = 1 / T_TIM2;
   /* USER CODE END TIM2_Init 2 */
 
 }
