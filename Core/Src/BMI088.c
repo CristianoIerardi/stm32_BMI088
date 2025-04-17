@@ -298,9 +298,9 @@ void BMI088_ReadAccelerometerDMA_Complete(BMI088 *imu) {
 	int16_t accZ = (int16_t) ((imu->accRxBuf[7] << 8) | imu->accRxBuf[6]);
 
 	/* Convert to m/s^2 */
-	imu->acc_mps2[0] = imu->accConversion * accX;
-	imu->acc_mps2[1] = imu->accConversion * accY;
-	imu->acc_mps2[2] = imu->accConversion * accZ;
+	imu->acc_mps2[0] = imu->accConversion * accX * 2;		// *2 was added by Cristiano.
+	imu->acc_mps2[1] = imu->accConversion * accY * 2;
+	imu->acc_mps2[2] = imu->accConversion * accZ * 2;
 
 }
 

@@ -110,6 +110,9 @@ Quaternion q = {1, 0, 0, 0}; 					// Initial state
 Vector3 gyr = {0.0f, 0.0f, 0.0f}; 				// gyro data
 Vector3 acc = {0.0f, 0.0f, 0.0f}; 				// acc data
 //EulerAngles angle = {{0.0f, 0.0f, 0.0f}};
+
+float abs_acc = 0.0f;
+float abs_acc_th = 0.2f;
 /*------------------*/
 
 //////////// Timers:
@@ -189,8 +192,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         CorrectQuaternionWithAccel(&q, acc, 0.9f);
         QuaternionToEuler(q, angles);
 
+        abs_acc = sqrt(pow(acc.x,2)+pow(acc.y,2) + pow(acc.z,2));
 
-        timestamp_TIM3++;	// how many times TIM2 is called
+        timestamp_TIM2++;	// how many times TIM2 is called
     }
 
     // Send data with CDC_Transfer_FS
@@ -207,9 +211,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 	// Send every data using just one string and one TX
 		char txBuff[256];
-		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n",
-				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z);
+		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
+				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, measureTick*1000, abs_acc);
 		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
+
 
 	}
 }
@@ -336,7 +341,7 @@ int main(void)
 
 
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
-  //EKF_CalculateGyroBias(&imu, 500);
+  EKF_CalculateGyroBias(&imu, 500);
   SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
   Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, T_TIM2);
 
