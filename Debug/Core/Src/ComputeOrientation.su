@@ -1,0 +1,5 @@
+../Core/Src/ComputeOrientation.c:46:6:EKF_Init	24	static
+../Core/Src/ComputeOrientation.c:65:6:EKF_UpdateIMU	376	static
+../Core/Src/ComputeOrientation.c:206:6:QuaternionToEuler	64	static
+../Core/Src/ComputeOrientation.c:235:6:SetQuaternionFromEuler	48	static
+../Core/Src/ComputeOrientation.c:253:6:NormalizeQuaternion	24	static

@@ -1,0 +1,6 @@
+eclipse.preferences.version=1
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1339841264/LINK/delimiter=;
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1339841264/LINK/operation=append
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1339841264/LINK/value=arm-none-eabi-g++
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1339841264/append=true
+environment/project/com.st.stm32cube.ide.mcu.gnu.managedbuild.config.exe.debug.1339841264/appendContributed=true

@@ -3,6 +3,7 @@
   ******************************************************************************
   * @file           : main.c
   * @brief          : Main program body
+  * @autor			: CriIera
   ******************************************************************************
   * @attention
   *
@@ -24,9 +25,20 @@
 /* USER CODE BEGIN Includes */
 #include "usbd_cdc_if.h"
 #include "BMI088.h"
-#include "Fusion.h"
-#include <stdbool.h>
 #include <stdio.h>
+#include "EKF.h"
+#include "ComputeOrientation.h"
+#include "LPF.h"
+#include "MadgwickAHRS.h"
+
+//#ifdef USE_SERIAL
+	//#include "Serial_Comm.h"
+//#endif //USE_SERIAL
+//#ifdef USE_API
+	#include "API_Comm.h"
+//#endif //USE_API
+
+
 
 /* USER CODE END Includes */
 
@@ -37,14 +49,17 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define SERIAL_OR_API  		0 	// 0 if we use API
+								// 1 if we use SERIAL
 
-#define NUM_SAMPLES_CALI	400 	// Num of samples to compute the calibration
-#define SAMPLE_TIME_MS_USB  5		// sampling period in the while loop
+#define SAMPLE_TIME_MS_USB  	10
+#define SAMPLE_TIME_MS_TOGGLE  	500
 
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+
 
 /* USER CODE END PM */
 
@@ -53,8 +68,12 @@ SPI_HandleTypeDef hspi1;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
 
+TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
+
 /* USER CODE BEGIN PV */
 BMI088 imu;
+LPF_FILTER filt;
 
 /* USER CODE END PV */
 
@@ -63,77 +82,126 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
+static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
+void Take_IMU_Measurements(BMI088 *imu);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-//#define SAMPLE_TIME_MS_USB  2		// SAMPLE_TIME_MS_USB/1000 s is the period
-//#define SAMPLE_PERIOD (0.001f) 		// replace this with actual sample period
-//float real_Ts_USB = 0.001f;	// mseconds
-//uint32_t real_Fs_USB = 1;		// mseconds
+/// Global variables
+const float f_CK = 84000000; 				// [Hz] clock frequency. See .ioc files
+float T_TIM2 = 0;							// seconds. This is the call period of the timer TIM2
+float F_TIM2 = 0;
 
-char logBuf[128];
-float gyr[3] = {0,0,0};
-float acc[3] = {0,0,0};
+//char main_txBuff[128];
+/*float acc[3] = {0,0,0};
+float gyr[3] = {0,0,0};*/
+float angles[3] = {0,0,0};					// euler angles
+//float bias[3] = {0,0,0};
 
-////////////////////////////////////////////////////////////////////////////////////////////
-/*NOTE: Register addres are written in the datasheet and in the .h file*/
-////////////////////////////////////////////////////////////////////////////////////////////
-// Register BMI_ACC_CONF 		0x40:  LPF and ODR, page 23 datasheet --> See section 4.4.1 for details
-//#define VAL_BMI_ACC_BWP		0x0A		// bit [7:4]	--> 0b1001xxxx
-//#define VAL_BMI_ACC_ODR		0X07		// bit [3:0]	--> 0bxxxx1000
-#define VAL_BMI_ACC_CONF		0x47	// bit [7:0]    --> 0b10011000 ==  is the mask of the two above
+uint32_t timestamp_TIM3 = 0;				// Number of times that TIM3 is called
+uint32_t timestamp_TIM2 = 0;				// Number of times that TIM2 is called
 
-// Register BMI_ACC_RANGE 		0x41:  Range accelerometer, +-3g to +- 24g
-#define VAL_BMI_ACC_RANGE		0x01	// 0x01 is +-6g
+uint32_t measureTick = 0;					// Tick corresponding to the timestamp of the current measurement
 
-// Register BMI_ACC_PWR_CONF 	0x7C:  Active or suspend mode
-#define VAL_BMI_ACC_PWC_CONF	0x00	// 0X00 is for the active mode
+/*------------------*/
+Quaternion q = {1, 0, 0, 0}; 					// Initial state
+Vector3 gyr = {0.0f, 0.0f, 0.0f}; 				// gyro data
+Vector3 acc = {0.0f, 0.0f, 0.0f}; 				// acc data
+//EulerAngles angle = {{0.0f, 0.0f, 0.0f}};
 
-// Register BMI_ACC_PWR_CTRL 	0x7D:  Accelerometer ON or OFF
-#define VAL_BMI_ACC_PWC_CTRL	0x04	// 0X04 is for accelerometer ON
 
-// Register BMI_GYR_RANGE 		0x0F:  Range gyroscope, +-125°/s to +-2000°/s
-#define VAL_BMI_GYR_RANGE		0x02	// 0x02 is +-500°/s
 
-// Register BMI_GYR_BANDWIDTH  	0x10:  Bandwidth gyroscope. See table at page 29 of the datasheet
-#define VAL_BMI_GYR_BANDWIDTH  	0x07	// 0x03 is for ODR = 400[Hz], filter bandwidth = 47[Hz]
+float abs_acc = 0.0f;
+float abs_acc_th = 0.2f;
+/*------------------*/
 
-// Register BMI_GYR_LPM1 		0x11:  Gyroscope into normal, suspend, deep suspend mode
-//#define VAL_BMI_GYR_LPM1		0x00	// 0X00 is for normal mode
+//////////// Timers:
+uint32_t timerUSB = 0;
+uint32_t timerToggle = 0;
 
-//Register BMI_GYR_SELF_TEST    0x3C: Register for the self test (GYRO_SELF_TEST)
-//#define VAL_BMI_GYR_SELF_TEST	0x??	//these are 4 flag to set separately
+///////////// Filter params
+float f_LP_gyr = 15.0f; // LP freq cut frequency in Hz of gyro
+float f_LP_acc = 20.0f; // LP freq cut frequency in Hz of acc
 
-////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////
-void Init_AccGyro_Reg(BMI088 *imu)
+float f_HP_gyr = 0.0001f; // HP freq cut frequency in Hz of gyro
+float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
+
+
+
+/// Function that toggles the led of the board to show if the device is working
+void Toggle(uint32_t waitingTime)
 {
-	BMI088_WriteAccRegister(imu, BMI_ACC_CONF, VAL_BMI_ACC_CONF);
-	BMI088_WriteAccRegister(imu, BMI_ACC_RANGE, VAL_BMI_ACC_RANGE);
-	BMI088_WriteAccRegister(imu, BMI_ACC_PWR_CONF, VAL_BMI_ACC_PWC_CONF);
-	BMI088_WriteGyrRegister(imu, BMI_GYR_RANGE, VAL_BMI_ACC_PWC_CTRL);
-	BMI088_WriteGyrRegister(imu, BMI_GYR_RANGE, VAL_BMI_GYR_RANGE);
-	BMI088_WriteGyrRegister(imu, BMI_GYR_BANDWIDTH, VAL_BMI_GYR_BANDWIDTH);
+	// Toggle to show if the code is running
+	if ((HAL_GetTick() - timerToggle) >= waitingTime)
+	{
+		HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+		timerToggle = HAL_GetTick();
+	}
+	timerUSB = HAL_GetTick();
 }
 
+/// Function to show some SPI and DMA parameter
+void Debug_SPI_DMA()
+{
 
+  	HAL_SPI_StateTypeDef spiState = imu.spiHandle->State;
+  	HAL_DMA_StateTypeDef dmaRxState = imu.spiHandle->hdmarx->State;
+
+  	char txBuff[32];
+  	sprintf(txBuff, "%u\t%u\n\r", spiState, dmaRxState);
+  	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+
+  	if (__HAL_DMA_GET_IT_SOURCE(imu.spiHandle->hdmarx, DMA_IT_TC) == RESET)
+  	{
+  		sprintf(txBuff, "#\n\r");
+  		while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+  	}
+}
+
+/// Function to insert IMU measurements from memory to memory (data is adjusted)
+void Take_IMU_Measurements(BMI088 *imu)
+{
+	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
+
+	/*
+	acc[0] = imu->acc_mps2[0];
+	acc[1] = imu->acc_mps2[1];
+	acc[2] = imu->acc_mps2[2];
+	gyr[0] = imu->gyr_rps[0];
+	gyr[1] = imu->gyr_rps[1];
+	gyr[2] = imu->gyr_rps[2];*/
+
+	gyr.y = -imu->gyr_rps[0];
+	gyr.x = imu->gyr_rps[1];
+	gyr.z = imu->gyr_rps[2];
+	acc.y = -imu->acc_mps2[0];
+	acc.x = imu->acc_mps2[1];
+	acc.z = imu->acc_mps2[2];
+
+}
+
+/// DMA Reading
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
 	if(GPIO_Pin == INT_ACC_Pin)
 	{
 		// we check if the interrupt pin is the accelerometer one
-		BMI088_ReadAccelerometerDMA(&imu);	// if yes read from the DMA memory
+		if (!imu.readingAcc)
+			BMI088_ReadAccelerometerDMA(&imu);	// if yes read from the DMA memory
 	}
 	else if(GPIO_Pin == INT_GYR_Pin)
 	{
 		// we check if the interrupt pin is the gyroscope one
-		BMI088_ReadGyroscopeDMA(&imu);
+		if (!imu.readingGyr)
+			BMI088_ReadGyroscopeDMA(&imu);
 	}
-}
 
+}
+/// DMA CALLBACK
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the transfer has been completed
 {
 	if(hspi->Instance == SPI1)		// Check if it is the correct SPI (we want SPI1)
@@ -141,6 +209,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 		if (imu.readingAcc)
 		{
 			BMI088_ReadAccelerometerDMA_Complete(&imu);
+
 		}
 
 		if (imu.readingGyr)
@@ -149,6 +218,70 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 		}
 	}
 }
+
+
+/// Callback of the timers
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	// Calculate angles with quaternions
+    if(htim->Instance == TIM2)
+    {
+        // Code to execute at constant sample rate
+        Take_IMU_Measurements(&imu);
+
+        filt = LPF_Update_All(&filt, gyr, acc);
+        gyr.x = filt.filt_gyr_x[1];
+        gyr.y = filt.filt_gyr_y[1];
+        gyr.z = filt.filt_gyr_z[1];
+        acc.x = filt.filt_acc_x[1];
+		acc.y = filt.filt_acc_y[1];
+		acc.z = filt.filt_acc_z[1];
+
+        /*filt = HPF_Update_All(&filt, gyr, acc);
+        gyr.x = filt.filt_gyr_x[1];
+        gyr.y = filt.filt_gyr_y[1];
+        gyr.z = filt.filt_gyr_z[1];
+        acc.x = filt.filt_acc_x[1];
+		acc.y = filt.filt_acc_y[1];
+		acc.z = filt.filt_acc_z[1];*/
+
+        //EKF_UpdateIMU(gyr, acc, T_TIM2, &q);
+        //UpdateQuaternion(&q, gyr, T_TIM2);
+        //CorrectQuaternionWithAccel(&q, acc, 0.9f);
+
+        MadgwickAHRSupdateIMU(gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, F_TIM2);
+        q.w = q0; q.x = q1; q.y = q2; q.z = q3;
+        QuaternionToEuler(q, angles);
+        QuaternionToEuler(q, angles);
+
+        abs_acc = sqrt(pow(acc.x,2)+pow(acc.y,2) + pow(acc.z,2));
+
+        timestamp_TIM2++;	// how many times TIM2 is called
+    }
+
+    // Send data with CDC_Transfer_FS
+    if(htim->Instance == TIM3)
+	{
+		/* Code to send data with CDC_Transfer_FS */
+
+		//API_PrintAngles(HAL_GetTick(), angles);
+		//float gyrArr[3] = {gyr.x, gyr.y, gyr.z};
+		//float accArr[3] = {acc.x, acc.y, acc.z};
+		//API_SendInertial(HAL_GetTick(), gyrArr, accArr);
+
+		timestamp_TIM3++;	// how many times TIM3 is called
+
+	// Send every data using just one string and one TX
+		char txBuff[256];
+		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
+				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, measureTick*1000, abs_acc);
+		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
+
+
+	}
+}
+
+
 
 /* USER CODE END 0 */
 
@@ -183,14 +316,19 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_SPI1_Init();
+  MX_TIM2_Init();
   MX_USB_DEVICE_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  /*--------------------------------------------*/
-	  // Sample rate
-	  float SAMPLE_PERIOD = 1 / (1000 * SAMPLE_TIME_MS_USB);
-	  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
+  /*.... Priorities ....................*/
+  HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_2);
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
 
-	  HAL_Delay(500);
+  /*....................................*/
+  HAL_Delay(1000);
 
 	  /* This is for the offset calculation of the sensor */
 	  //BMI088_InitCalibration(&imu, imu.offset_gyr, imu.offset_acc, FALSE, NUM_SAMPLES_CALI);
@@ -202,54 +340,30 @@ int main(void)
 	  FusionAhrsInitialise(&ahrs);
   /*--------------------------------------------*/
 
+  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
+  //EKF_CalculateGyroBias(&imu, 500);
+  SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
+  Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, T_TIM2);
+
+  HAL_Delay(1000);
+
+  //EKF_Init(&q);
+  /* ----- START TIMERS ------------------------------------------------------- */
+  HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
+  HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
+  /* -------------------------------------------------------------------------- */
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
 
-  // Timers:
-  uint32_t timerUSB = 0;
-
-  // Registers setup
-  //Init_AccGyro_Reg(&imu);
-
 
   while (1)
   {
 
-  /* Log data via USB */
-	  if( (HAL_GetTick() - timerUSB) >= SAMPLE_TIME_MS_USB)
-	  {
-		  /*gyr[0] = imu.gyr_rps[0]; //- imu.offset_gyr[0];
-		  gyr[1] = imu.gyr_rps[1]; //- imu.offset_gyr[2];
-		  gyr[2] = imu.gyr_rps[2]; //- imu.offset_gyr[2];
-
-		  acc[0] = imu.acc_mps2[0]; //- imu.offset_acc[0];
-		  acc[1] = imu.acc_mps2[1]; //- imu.offset_acc[2];
-		  acc[2] = imu.acc_mps2[2]; //- imu.offset_acc[2];*/
-
-					  /*sprintf(logBuf, "aX=%.3f,\taY=%.3f,\taZ=%.3f,\tgX=%.3f,\tgY=%.3f,\tgZ=%.3f\r\n",
-							  acc[0], acc[1], acc[2], gyr[0],  gyr[1],  gyr[2]);
-					  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
-
-					  sprintf(logBuf, "________,\t________,\t________,\t__=%.3f,\t__=%.3f,\t__=%.3f\r\n",
-							  (gyr[0] - imu.offset_gyr[0]),  (gyr[1] - imu.offset_gyr[1]),  (gyr[2] - imu.offset_gyr[2]) );
-							  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}*/
-
-		  // Passing measured data to structs gyroscope and accelerometer. This is done to compute the angles
-		  FusionVector gyroscope = { {imu.gyr_rps[0], imu.gyr_rps[1], imu.gyr_rps[2]} };
-		  FusionVector accelerometer = { {imu.acc_mps2[0], imu.acc_mps2[1], imu.acc_mps2[2]} };
-
-		  FusionAhrsUpdateNoMagnetometer(&ahrs, gyroscope, accelerometer, SAMPLE_TIME_MS_USB);
-		  FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
-
-					  sprintf(logBuf, "Roll=%.3f\t Pitch=%.3f\t Yaw=%.3f\n\r", euler.angle.roll, euler.angle.pitch, euler.angle.yaw);
-					  while (CDC_Transmit_FS((uint8_t *)logBuf, strlen(logBuf)) == USBD_BUSY) {}
-
-		  timerUSB = HAL_GetTick();
-	  }
-
-
+	  //Debug_SPI_DMA();
+	  Toggle(SAMPLE_TIME_MS_TOGGLE);
 
 
 
@@ -344,6 +458,98 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 42-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 10000-1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+	T_TIM2 = 1.0f / (f_CK / (float)((htim2.Init.Period +1 ) * htim2.Init.Prescaler + 1));
+	F_TIM2 = 1 / T_TIM2;
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 42-1;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 10000-1;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -357,7 +563,7 @@ static void MX_DMA_Init(void)
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
   /* DMA2_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
 
 }
@@ -416,10 +622,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -437,6 +643,11 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
+
+	char txBuff[128];
+	sprintf(txBuff, "SPI Error!");
+	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
   while (1)

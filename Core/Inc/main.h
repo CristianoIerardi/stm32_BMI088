@@ -36,7 +36,11 @@ extern "C" {
 
 /* Exported types ------------------------------------------------------------*/
 /* USER CODE BEGIN ET */
-
+/*------ Communication Libraries -----------------------*/
+//#undef USE_SERIAL
+//#define USE_SERIAL
+//#undef USE_API
+//#define USE_API
 /* USER CODE END ET */
 
 /* Exported constants --------------------------------------------------------*/
@@ -53,6 +57,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+extern char txBuff[128];
 
 /* USER CODE END EFP */
 
