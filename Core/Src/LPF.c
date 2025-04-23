@@ -7,14 +7,15 @@
 #include "LPF.h"
 #include <math.h>
 
+
+
 /// ######################################################################################################
 /// ##### FILTER SECTION #################################################################################
 /// ######################################################################################################
 
-void Filter_Init(LPF_FILTER *filt, float f_LP_gyr, float f_LP_acc, float f_HP_gyr, float f_HP_acc, float dt)
+void Filter_Init(LPF_FILTER *filt, float f_LP_gyr, float f_LP_acc, float f_HP_gyr, float f_HP_acc, float f_LP_angles, float dt)
 {
-
-	LPF_Init(filt, f_LP_gyr, f_LP_acc, dt);
+	LPF_Init(filt, f_LP_gyr, f_LP_acc, f_LP_angles, dt);
 	HPF_Init(filt, f_HP_gyr, f_HP_acc, dt);
 
 	for(int i=0; i<N_FILT_SAMPLES; i++)
@@ -36,53 +37,27 @@ void Filter_Init(LPF_FILTER *filt, float f_LP_gyr, float f_LP_acc, float f_HP_gy
 		filt->not_filt_acc_y[i] = 0.0f;
 		filt->not_filt_acc_z[i] = 0.0f;
 	}
+
+	for(int i=0; i<N_FILT_SAMPLES; i++)
+	{
+		filt->filt_ang_x[i] = 0.0f;
+		filt->filt_ang_y[i] = 0.0f;
+		filt->filt_ang_z[i] = 0.0f;
+	}
 }
 
+
+
 /// ######################################################################################################
-/// ##### LOW PASS FILTER SECTION ########################################################################
+/// ##### LOW PASS FILTER for GYRO&ACC SECTION ###########################################################
 /// ######################################################################################################
+
+/// Alpha calculation for LPF filter in general --> (GYR&ACC and ANGLES)
 float LPF_CalculateAlpha(float f_cut, float dt)
 {
 	float tau = 1.0f / (2.0f * M_PI * f_cut);
 	return dt / (tau + dt);
 }
-
-
-
-void LPF_Init(LPF_FILTER *filt, float f_cut_gyr, float f_cut_acc, float dt)
-{
-	// aplha for LPF settings
-	float alpha_gyr = LPF_CalculateAlpha(f_cut_gyr, dt);
-	float alpha_acc = LPF_CalculateAlpha(f_cut_acc, dt);
-	LPF_SetAlpha(filt, alpha_gyr, alpha_acc);
-
-}
-
-void LPF_SetAlpha(LPF_FILTER *filt, float alpha_gyr, float alpha_acc)
-{
-	if(alpha_gyr > 1.0f)
-	{
-		alpha_gyr = 1.0f;
-	}
-	else if(alpha_gyr < 0.0f)
-	{
-		alpha_gyr = 0.0f;
-	}
-
-	if(alpha_acc > 1.0f)
-	{
-		alpha_acc = 1.0f;
-	}
-	else if(alpha_acc < 0.0f)
-	{
-		alpha_acc = 0.0f;
-	}
-
-	filt->alpha_gyr = alpha_gyr;
-	filt->alpha_acc = alpha_acc;
-}
-
-
 
 /// ------ LOW PF ILTER, 1° ORDER ------------------------------------------------------------------------------------
 float LPF_Update_Single(LPF_FILTER *filt, float old_data, float data, float alpha)
@@ -90,10 +65,43 @@ float LPF_Update_Single(LPF_FILTER *filt, float old_data, float data, float alph
 	 return ( (alpha * data) + ((1-alpha) * old_data) );
 }
 
-
-LPF_FILTER LPF_Update_All(LPF_FILTER *filt, Vector3 data_gyr, Vector3 data_acc)
+/// ------ LPF set over boundaries coefficients ----------------------------------------------------------------------
+void LPF_SetAlpha(LPF_FILTER *filt, float alpha_gyr, float alpha_acc, float coeff_filt_angl)
 {
+	// Alpha gyr COEFF
+	if(alpha_gyr > 1.0f)
+		alpha_gyr = 1.0f;
+	else if(alpha_gyr < 0.0f)
+		alpha_gyr = 0.0f;
+	// Alpha_acc COEFF
+	if(alpha_acc > 1.0f)
+		alpha_acc = 1.0f;
+	else if(alpha_acc < 0.0f)
+		alpha_acc = 0.0f;
+	// coeff_filt_angl COEFF
+	if(coeff_filt_angl > 1.0f)
+		coeff_filt_angl = 1.0f;
+	else if(coeff_filt_angl < 0)
+		coeff_filt_angl = 0.0f;
 
+	filt->alpha_gyr = alpha_gyr;
+	filt->alpha_acc = alpha_acc;
+	filt->coeff_filt_ang = coeff_filt_angl;
+}
+
+void LPF_Init(LPF_FILTER *filt, float f_cut_gyr, float f_cut_acc, float f_cut_angles, float dt)
+{
+	// aplha for LPF settings
+	float alpha_gyr = LPF_CalculateAlpha(f_cut_gyr, dt);
+	float alpha_acc = LPF_CalculateAlpha(f_cut_acc, dt);
+	float coeff_filt_angl = LPF_CalculateAlpha(f_cut_angles, dt);
+	LPF_SetAlpha(filt, alpha_gyr, alpha_acc, f_cut_angles);
+
+}
+
+
+LPF_FILTER LPF_GyrAcc_Update_All(LPF_FILTER *filt, Vector3 data_gyr, Vector3 data_acc)
+{
 	filt->filt_gyr_x[0] = LPF_Update_Single(filt, filt->filt_gyr_x[1], data_gyr.x, filt->alpha_gyr);
 	filt->filt_gyr_y[0] = LPF_Update_Single(filt, filt->filt_gyr_y[1], data_gyr.y, filt->alpha_gyr);
 	filt->filt_gyr_z[0] = LPF_Update_Single(filt, filt->filt_gyr_z[1], data_gyr.z, filt->alpha_gyr);
@@ -108,8 +116,30 @@ LPF_FILTER LPF_Update_All(LPF_FILTER *filt, Vector3 data_gyr, Vector3 data_acc)
 	filt->filt_acc_y[1] = filt->filt_acc_y[0];
 	filt->filt_acc_z[1] = filt->filt_acc_z[0];
 
+
 	return *filt;
 }
+
+LPF_FILTER LPF_Angles_Update_All(LPF_FILTER *filt, float *angl)
+{
+	filt->filt_ang_x[0] = LPF_Update_Single(filt, filt->filt_ang_x[1], angl[0] , filt->coeff_filt_ang);
+	filt->filt_ang_y[0] = LPF_Update_Single(filt, filt->filt_ang_y[1], angl[1] , filt->coeff_filt_ang);
+	filt->filt_ang_z[0] = LPF_Update_Single(filt, filt->filt_ang_z[1], angl[2] , filt->coeff_filt_ang);
+
+	filt->filt_ang_x[1] = filt->filt_ang_x[0];
+	filt->filt_ang_y[1] = filt->filt_ang_y[0];
+	filt->filt_ang_z[1] = filt->filt_ang_z[0];
+
+	angl[0] = filt->filt_ang_x[0];
+	angl[1] = filt->filt_ang_y[0];
+	angl[2] = filt->filt_ang_z[0];
+
+
+	return *filt;
+}
+
+
+
 
 
 /// ######################################################################################################
@@ -200,8 +230,8 @@ LPF_FILTER HPF_Update_All(LPF_FILTER *filt, Vector3 data_gyr, Vector3 data_acc)
 }
 //------------------------------------------------------------------------------------------------------------------------
 
-
-
-
+/// ######################################################################################################
+/// ##### LOW PASS FILTER for ANGLES SECTION #############################################################
+/// ######################################################################################################
 
 

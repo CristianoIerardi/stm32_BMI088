@@ -124,8 +124,9 @@ uint32_t timerUSB = 0;
 uint32_t timerToggle = 0;
 
 ///////////// Filter params
-float f_LP_gyr = 15.0f; // LP freq cut frequency in Hz of gyro
-float f_LP_acc = 20.0f; // LP freq cut frequency in Hz of acc
+float f_LP_gyr = 10.0f; // LP freq cut frequency in Hz of gyro
+float f_LP_acc = 10.0f; // LP freq cut frequency in Hz of acc
+float f_LP_angles = 0.08f;  // LP freq cut frequency in Hz of angles values calculation
 
 float f_HP_gyr = 0.0001f; // HP freq cut frequency in Hz of gyro
 float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
@@ -166,14 +167,6 @@ void Debug_SPI_DMA()
 void Take_IMU_Measurements(BMI088 *imu)
 {
 	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
-
-	/*
-	acc[0] = imu->acc_mps2[0];
-	acc[1] = imu->acc_mps2[1];
-	acc[2] = imu->acc_mps2[2];
-	gyr[0] = imu->gyr_rps[0];
-	gyr[1] = imu->gyr_rps[1];
-	gyr[2] = imu->gyr_rps[2];*/
 
 	gyr.y = -imu->gyr_rps[0];
 	gyr.x = imu->gyr_rps[1];
@@ -229,13 +222,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         // Code to execute at constant sample rate
         Take_IMU_Measurements(&imu);
 
-        filt = LPF_Update_All(&filt, gyr, acc);
-        gyr.x = filt.filt_gyr_x[1];
-        gyr.y = filt.filt_gyr_y[1];
-        gyr.z = filt.filt_gyr_z[1];
-        acc.x = filt.filt_acc_x[1];
-		acc.y = filt.filt_acc_y[1];
-		acc.z = filt.filt_acc_z[1];
+        /// Filtering Gyro and Acc measurements
+        filt = LPF_GyrAcc_Update_All(&filt, gyr, acc);
+        gyr.x = filt.filt_gyr_x[0];
+        gyr.y = filt.filt_gyr_y[0];
+        gyr.z = filt.filt_gyr_z[0];
+        acc.x = filt.filt_acc_x[0];
+		acc.y = filt.filt_acc_y[0];
+		acc.z = filt.filt_acc_z[0];
 
         /*filt = HPF_Update_All(&filt, gyr, acc);
         gyr.x = filt.filt_gyr_x[1];
@@ -245,14 +239,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		acc.y = filt.filt_acc_y[1];
 		acc.z = filt.filt_acc_z[1];*/
 
-        //EKF_UpdateIMU(gyr, acc, T_TIM2, &q);
-        //UpdateQuaternion(&q, gyr, T_TIM2);
-        //CorrectQuaternionWithAccel(&q, acc, 0.9f);
-
+		/// Algorithm application to find angles
         MadgwickAHRSupdateIMU(gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, F_TIM2);
         q.w = q0; q.x = q1; q.y = q2; q.z = q3;
         QuaternionToEuler(q, angles);
-        QuaternionToEuler(q, angles);
+
+        /// Filtering angles
+        //filt = LPF_Angles_Update_All(&filt, angles);
 
         abs_acc = sqrt(pow(acc.x,2)+pow(acc.y,2) + pow(acc.z,2));
 
@@ -334,7 +327,7 @@ int main(void)
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
   //EKF_CalculateGyroBias(&imu, 500);
   SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
-  Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, T_TIM2);
+  Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, f_LP_angles, T_TIM2);
 
   HAL_Delay(1000);
 
