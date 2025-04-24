@@ -26,16 +26,17 @@
 #include "usbd_cdc_if.h"
 #include "BMI088.h"
 #include <stdio.h>
-#include "EKF.h"
+//#include "EKF.h"
 #include "ComputeOrientation.h"
-#include "LPF.h"
+#include "Filters.h"
 #include "MadgwickAHRS.h"
+#include <math.h>
 
 //#ifdef USE_SERIAL
 	//#include "Serial_Comm.h"
 //#endif //USE_SERIAL
 //#ifdef USE_API
-	#include "API_Comm.h"
+	//#include "API_Comm.h"
 //#endif //USE_API
 
 
@@ -49,10 +50,10 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define SERIAL_OR_API  		0 	// 0 if we use API
+//#define SERIAL_OR_API  		0 	// 0 if we use API
 								// 1 if we use SERIAL
 
-#define SAMPLE_TIME_MS_USB  	10
+//#define SAMPLE_TIME_MS_USB  	10
 #define SAMPLE_TIME_MS_TOGGLE  	500
 
 /* USER CODE END PD */
@@ -85,54 +86,54 @@ static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-void Take_IMU_Measurements(BMI088 *imu);
+
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-/// Global variables
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////// GLOBAL VARIABLES ////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/* Clock and period, frequency, params of timers */
 const float f_CK = 84000000; 				// [Hz] clock frequency. See .ioc files
 float T_TIM2 = 0;							// seconds. This is the call period of the timer TIM2
 float F_TIM2 = 0;
 
-//char main_txBuff[128];
-/*float acc[3] = {0,0,0};
-float gyr[3] = {0,0,0};*/
-float angles[3] = {0,0,0};					// euler angles
-//float bias[3] = {0,0,0};
-
 uint32_t timestamp_TIM3 = 0;				// Number of times that TIM3 is called
 uint32_t timestamp_TIM2 = 0;				// Number of times that TIM2 is called
-
 uint32_t measureTick = 0;					// Tick corresponding to the timestamp of the current measurement
 
-/*------------------*/
-Quaternion q = {1, 0, 0, 0}; 					// Initial state
-Vector3 gyr = {0.0f, 0.0f, 0.0f}; 				// gyro data
-Vector3 acc = {0.0f, 0.0f, 0.0f}; 				// acc data
-//EulerAngles angle = {{0.0f, 0.0f, 0.0f}};
+/*------------------------------------------------------------------------*/
+/* Variables for algorithms */
+Quaternion q = {1, 0, 0, 0}; 				// Initial state
+/*------------------------------------------------------------------------*/
+/* Shared variables */
+float gyr[3] = {0.0f, 0.0f, 0.0f}; 				// gyro data
+float acc[3] = {0.0f, 0.0f, 0.0f}; 				// acc data
+float angles[3] = {0,0,0};						// euler angles
+float abs_acc = 0;
 
-
-
-float abs_acc = 0.0f;
-float abs_acc_th = 0.2f;
-/*------------------*/
-
-//////////// Timers:
+/*------------------------------------------------------------------------*/
+/* Timers */
 uint32_t timerUSB = 0;
 uint32_t timerToggle = 0;
 
-///////////// Filter params
-float f_LP_gyr = 10.0f; // LP freq cut frequency in Hz of gyro
-float f_LP_acc = 10.0f; // LP freq cut frequency in Hz of acc
-float f_LP_angles = 0.08f;  // LP freq cut frequency in Hz of angles values calculation
+/*------------------------------------------------------------------------*/
+/* Filter params LPF and HPF (Currently the HPF is not used and to correct in "Filters.h")*/
+float f_LP_gyr = 5.0f; // LP freq cut frequency in Hz of gyro
+float f_LP_acc = 5.0f; // LP freq cut frequency in Hz of acc
+float f_LP_angles = 5.0f;  // LP freq cut frequency in Hz of angles values calculation
 
 float f_HP_gyr = 0.0001f; // HP freq cut frequency in Hz of gyro
 float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
 
 
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////// FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /// Function that toggles the led of the board to show if the device is working
 void Toggle(uint32_t waitingTime)
 {
@@ -168,12 +169,17 @@ void Take_IMU_Measurements(BMI088 *imu)
 {
 	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
 
-	gyr.x = imu->gyr_rps[0] - imu->gyr_bias[0];			// + 0.0051;
-	gyr.y = imu->gyr_rps[1] - imu->gyr_bias[1];			// + 0.0025;
-	gyr.z = imu->gyr_rps[2] - imu->gyr_bias[2];			// + 0.0047;
-	acc.x = imu->acc_mps2[0];
-	acc.y = imu->acc_mps2[1];
-	acc.z = imu->acc_mps2[2];
+	/* Here a sign and axis correction is applied.
+	 * In the rest of the code I will use gyr and acc that are the shared variables
+	 * elaborated by the algorithms while instead, in imu->___[__] there are pure values
+	 * taken from the memory of the sensor BMI088
+	 */
+	gyr[0] = -imu->gyr_rps[1] + imu->gyr_bias[1];			// + 0.0051;
+	gyr[1] = imu->gyr_rps[0] - imu->gyr_bias[0];			// + 0.0025;
+	gyr[2] = imu->gyr_rps[2] - imu->gyr_bias[2];			// + 0.0047;
+	acc[0] = -imu->acc_mps2[1];
+	acc[1] = imu->acc_mps2[0];
+	acc[2] = imu->acc_mps2[2];
 }
 
 /// DMA Reading
@@ -193,6 +199,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 
 }
+
 /// DMA CALLBACK
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the transfer has been completed
 {
@@ -211,67 +218,42 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	}
 }
 
-
-
-
-
 /// Callback of the timers
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	// Calculate angles with quaternions
     if(htim->Instance == TIM2)
     {
+    	timestamp_TIM2++;	// how many times TIM2 is called (not used yet)
         // Code to execute at constant sample rate
         Take_IMU_Measurements(&imu);
 
         /// Filtering Gyro and Acc measurements
         filt = LPF_GyrAcc_Update_All(&filt, gyr, acc);
-        gyr.x = filt.filt_gyr_x[0];
-        gyr.y = filt.filt_gyr_y[0];
-        gyr.z = filt.filt_gyr_z[0];
-        acc.x = filt.filt_acc_x[0];
-		acc.y = filt.filt_acc_y[0];
-		acc.z = filt.filt_acc_z[0];
-
-        /*filt = HPF_Update_All(&filt, gyr, acc);
-        gyr.x = filt.filt_gyr_x[1];
-        gyr.y = filt.filt_gyr_y[1];
-        gyr.z = filt.filt_gyr_z[1];
-        acc.x = filt.filt_acc_x[1];
-		acc.y = filt.filt_acc_y[1];
-		acc.z = filt.filt_acc_z[1];*/
 
 		/// Algorithm application to find angles
-        MadgwickAHRSupdateIMU(gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, F_TIM2);
+        MadgwickAHRSupdateIMU(gyr[0], gyr[1], gyr[2], acc[0], acc[1], acc[2], F_TIM2);
         q.w = q0; q.x = q1; q.y = q2; q.z = q3;
         QuaternionToEuler(q, angles);
 
-        /// Filtering angles
+        /* LPF Filtering angles */
         //filt = LPF_Angles_Update_All(&filt, angles);
 
-        abs_acc = sqrt(pow(acc.x,2)+pow(acc.y,2) + pow(acc.z,2));
+        /* module of the acceleration vector (not used right now) */
+        abs_acc = sqrt(pow(acc[0],2)+pow(acc[1],2) + pow(acc[2],2));
 
-        timestamp_TIM2++;	// how many times TIM2 is called
     }
 
     // Send data with CDC_Transfer_FS
     if(htim->Instance == TIM3)
 	{
-		/* Code to send data with CDC_Transfer_FS */
+    	timestamp_TIM3++;	// how many times TIM3 is called (not used yet)
 
-		//API_PrintAngles(HAL_GetTick(), angles);
-		//float gyrArr[3] = {gyr.x, gyr.y, gyr.z};
-		//float accArr[3] = {acc.x, acc.y, acc.z};
-		//API_SendInertial(HAL_GetTick(), gyrArr, accArr);
-
-		timestamp_TIM3++;	// how many times TIM3 is called
-
-	// Send every data using just one string and one TX
+    	// Send every data using just one string and one TX
 		char txBuff[256];
 		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
-				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, measureTick*1000, abs_acc);
+				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr[0], gyr[1], gyr[2], acc[0], acc[1], acc[2], measureTick*1000, abs_acc); // I send the abs_acc instead the temperature just to plot it in the API graph
 		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
-
 	}
 }
 
@@ -316,25 +298,22 @@ int main(void)
   MX_USB_DEVICE_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  /*.... Priorities ....................*/
+  /*.... Priorities management .................................*/
   HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_2);
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
   HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
+  /*............................................................*/
 
-  /*....................................*/
   HAL_Delay(1000);
 
-
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
-  //EKF_CalculateGyroBias(&imu, 10000);
   SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
   Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, f_LP_angles, T_TIM2);
 
   HAL_Delay(1000);
 
-  //EKF_Init(&q);
   /* ----- START TIMERS ------------------------------------------------------- */
   HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
   Init_BMI088_Bias(&imu, 1000000);
@@ -351,11 +330,8 @@ int main(void)
 
   while (1)
   {
-
 	  //Debug_SPI_DMA();
 	  Toggle(SAMPLE_TIME_MS_TOGGLE);
-
-
 
     /* USER CODE END WHILE */
 
@@ -488,6 +464,7 @@ static void MX_TIM2_Init(void)
   }
   /* USER CODE BEGIN TIM2_Init 2 */
 
+  /* These following 2 lines calculate the Frequency and the Period of the Timer TIM2*/
 	T_TIM2 = 1.0f / (f_CK / (float)((htim2.Init.Period +1 ) * htim2.Init.Prescaler + 1));
 	F_TIM2 = 1 / T_TIM2;
   /* USER CODE END TIM2_Init 2 */

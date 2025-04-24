@@ -1,4 +1,0 @@
-../Core/Src/EKF.c:54:6:EKF_CalculateGyroBias	40	static
-../Core/Src/EKF.c:73:6:EKF_Predict	32	static
-../Core/Src/EKF.c:89:6:EKF_Update	48	static
-../Core/Src/EKF.c:107:6:EKF_FindAngles	40	static

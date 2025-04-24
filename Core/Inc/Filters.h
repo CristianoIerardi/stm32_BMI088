@@ -5,10 +5,11 @@
  *      Author: crist
  */
 
-#ifndef INC_LPF_H_
-#define INC_LPF_H_
+#ifndef INC_FILTERS_H_
+#define INC_FILTERS_H_
 
 #include "ComputeOrientation.h"
+#include "BMI088.h"
 
 #define N_FILT_SAMPLES		2
 
@@ -54,7 +55,7 @@ float LPF_CalculateAlpha(float f_cut, float dt);
 void LPF_Init(LPF_FILTER *filt, float f_cut_gyr, float f_cut_acc, float f_cut_angles, float dt);
 void LPF_SetAlpha(LPF_FILTER *filt, float alpha_gyr, float alpha_acc, float coeff_filt_angl);
 float LPF_Update_Single(LPF_FILTER *filt, float old_data, float data, float alpha);
-LPF_FILTER LPF_GyrAcc_Update_All(LPF_FILTER *filt, Vector3 data_gyr, Vector3 data_acc);
+LPF_FILTER LPF_GyrAcc_Update_All(LPF_FILTER *filt, float *gyr, float *acc);
 LPF_FILTER LPF_Angles_Update_All(LPF_FILTER *filt, float *angl);
 
 /// HPF
@@ -71,4 +72,4 @@ float HPF_Update_Single(LPF_FILTER *filt, float *filt_data, float *not_filtered_
 
 
 
-#endif /* INC_LPF_H_ */
+#endif /* INC_FILTERS_H_ */

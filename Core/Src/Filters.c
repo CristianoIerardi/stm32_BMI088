@@ -4,7 +4,7 @@
  *  Created on: Apr 15, 2025
  *      Author: crist
  */
-#include "LPF.h"
+#include <Filters.h>
 #include <math.h>
 
 
@@ -100,15 +100,17 @@ void LPF_Init(LPF_FILTER *filt, float f_cut_gyr, float f_cut_acc, float f_cut_an
 }
 
 
-LPF_FILTER LPF_GyrAcc_Update_All(LPF_FILTER *filt, Vector3 data_gyr, Vector3 data_acc)
+LPF_FILTER LPF_GyrAcc_Update_All(LPF_FILTER *filt, float *gyr, float *acc)
 {
-	filt->filt_gyr_x[0] = LPF_Update_Single(filt, filt->filt_gyr_x[1], data_gyr.x, filt->alpha_gyr);
-	filt->filt_gyr_y[0] = LPF_Update_Single(filt, filt->filt_gyr_y[1], data_gyr.y, filt->alpha_gyr);
-	filt->filt_gyr_z[0] = LPF_Update_Single(filt, filt->filt_gyr_z[1], data_gyr.z, filt->alpha_gyr);
-	filt->filt_acc_x[0] = LPF_Update_Single(filt, filt->filt_acc_x[1], data_acc.x, filt->alpha_acc);
-	filt->filt_acc_y[0] = LPF_Update_Single(filt, filt->filt_acc_y[1], data_acc.y, filt->alpha_acc);
-	filt->filt_acc_z[0] = LPF_Update_Single(filt, filt->filt_acc_z[1], data_acc.z, filt->alpha_acc);
+	/* I compute the LPF filter */
+	filt->filt_gyr_x[0] = LPF_Update_Single(filt, filt->filt_gyr_x[1], gyr[0], filt->alpha_gyr);
+	filt->filt_gyr_y[0] = LPF_Update_Single(filt, filt->filt_gyr_y[1], gyr[1], filt->alpha_gyr);
+	filt->filt_gyr_z[0] = LPF_Update_Single(filt, filt->filt_gyr_z[1], gyr[2], filt->alpha_gyr);
+	filt->filt_acc_x[0] = LPF_Update_Single(filt, filt->filt_acc_x[1], acc[0], filt->alpha_acc);
+	filt->filt_acc_y[0] = LPF_Update_Single(filt, filt->filt_acc_y[1], acc[1], filt->alpha_acc);
+	filt->filt_acc_z[0] = LPF_Update_Single(filt, filt->filt_acc_z[1], acc[2], filt->alpha_acc);
 
+	/* the current sample will become the next old one */
 	filt->filt_gyr_x[1] = filt->filt_gyr_x[0];
 	filt->filt_gyr_y[1] = filt->filt_gyr_y[0];
 	filt->filt_gyr_z[1] = filt->filt_gyr_z[0];
@@ -116,6 +118,13 @@ LPF_FILTER LPF_GyrAcc_Update_All(LPF_FILTER *filt, Vector3 data_gyr, Vector3 dat
 	filt->filt_acc_y[1] = filt->filt_acc_y[0];
 	filt->filt_acc_z[1] = filt->filt_acc_z[0];
 
+	/* I update gyro and acc global variables */
+	gyr[0] = filt->filt_gyr_x[0];
+	gyr[1] = filt->filt_gyr_y[0];
+	gyr[2] = filt->filt_gyr_z[0];
+	acc[0] = filt->filt_acc_x[0];
+	acc[1] = filt->filt_acc_y[0];
+	acc[2] = filt->filt_acc_z[0];
 
 	return *filt;
 }

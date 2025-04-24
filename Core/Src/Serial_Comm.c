@@ -11,7 +11,8 @@
 #include <stdint.h>
 #include "stm32f4xx_hal.h"
 #include <string.h>
-//#include "usbd_cdc_if.h"
+#include <stdio.h>
+#include "usbd_cdc_if.h"
 
 #include "Serial_Comm.h"
 
