@@ -135,6 +135,25 @@ uint8_t BMI088_Init(BMI088 *imu,
 
 }
 
+
+void Init_BMI088_Bias(BMI088* imu, int cycles)
+{
+    for (int i = 0; i < cycles; i++)
+    {
+        imu->gyr_bias[0] += imu->gyr_rps[0];
+        imu->gyr_bias[1] += imu->gyr_rps[1];
+        imu->gyr_bias[2] += imu->gyr_rps[2];
+        imu->acc_bias[0] += imu->acc_mps2[0];
+        imu->acc_bias[1] += imu->acc_mps2[1];
+        imu->acc_bias[2] += imu->acc_mps2[2];
+    }
+    for (int i = 0; i < 3; i++)
+    {
+    	imu->gyr_bias[i] = imu->gyr_bias[i] / cycles;
+    	imu->acc_bias[i] = imu->acc_bias[i] / cycles;
+    }
+}
+
 /*
  *
  * LOW-LEVEL REGISTER FUNCTIONS

@@ -56,6 +56,8 @@ typedef struct {
 	/* x-y-z measurements */
 	float acc_mps2[3];
 	float gyr_rps[3];
+	float acc_bias[3];
+	float gyr_bias[3];
 
 } BMI088;
 
@@ -68,6 +70,8 @@ uint8_t BMI088_Init(BMI088 *imu,
 				 SPI_HandleTypeDef *spiHandle,
 				 GPIO_TypeDef *csAccPinBank, uint16_t csAccPin,
 				 GPIO_TypeDef *csGyrPinBank, uint16_t csGyrPin);
+
+void Init_BMI088_Bias(BMI088* imu, int cycles);
 
 /*
  *

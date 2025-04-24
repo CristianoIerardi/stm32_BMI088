@@ -168,13 +168,12 @@ void Take_IMU_Measurements(BMI088 *imu)
 {
 	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
 
-	gyr.y = -imu->gyr_rps[0];
-	gyr.x = imu->gyr_rps[1];
-	gyr.z = imu->gyr_rps[2];
-	acc.y = -imu->acc_mps2[0];
-	acc.x = imu->acc_mps2[1];
+	gyr.x = imu->gyr_rps[0] - imu->gyr_bias[0];			// + 0.0051;
+	gyr.y = imu->gyr_rps[1] - imu->gyr_bias[1];			// + 0.0025;
+	gyr.z = imu->gyr_rps[2] - imu->gyr_bias[2];			// + 0.0047;
+	acc.x = imu->acc_mps2[0];
+	acc.y = imu->acc_mps2[1];
 	acc.z = imu->acc_mps2[2];
-
 }
 
 /// DMA Reading
@@ -211,6 +210,9 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 		}
 	}
 }
+
+
+
 
 
 /// Callback of the timers
@@ -270,9 +272,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr.x, gyr.y, gyr.z, acc.x, acc.y, acc.z, measureTick*1000, abs_acc);
 		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
 
-
 	}
 }
+
+
 
 
 
@@ -325,7 +328,7 @@ int main(void)
 
 
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
-  //EKF_CalculateGyroBias(&imu, 500);
+  //EKF_CalculateGyroBias(&imu, 10000);
   SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
   Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, f_LP_angles, T_TIM2);
 
@@ -334,8 +337,11 @@ int main(void)
   //EKF_Init(&q);
   /* ----- START TIMERS ------------------------------------------------------- */
   HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
+  Init_BMI088_Bias(&imu, 1000000);
   HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
   /* -------------------------------------------------------------------------- */
+
+
 
   /* USER CODE END 2 */
 
