@@ -10,10 +10,6 @@
 
 
 #include "stm32f4xx_hal.h"
-#include "usbd_cdc_if.h"
-
-#define FALSE	0
-#define TRUE	1
 
 /* Register defines */
 #define BMI_ACC_CHIP_ID 		0x00
@@ -60,13 +56,10 @@ typedef struct {
 	/* x-y-z measurements */
 	float acc_mps2[3];
 	float gyr_rps[3];
-
-	/* offsets */
-	float offset_gyr[3];
-	float offset_acc[3];
+	float acc_bias[3];
+	float gyr_bias[3];
 
 } BMI088;
-
 
 /*
  *
@@ -78,7 +71,7 @@ uint8_t BMI088_Init(BMI088 *imu,
 				 GPIO_TypeDef *csAccPinBank, uint16_t csAccPin,
 				 GPIO_TypeDef *csGyrPinBank, uint16_t csGyrPin);
 
-void BMI088_InitCalibration(BMI088 *imu, float* gyrOffset, float* accOffset, uint8_t doAccOffset, uint8_t caliLength);
+void Init_BMI088_Bias(BMI088* imu, int cycles);
 
 /*
  *

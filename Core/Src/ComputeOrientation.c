@@ -67,9 +67,9 @@ void EKF_UpdateIMU(const Vector3 gyro, const Vector3 acc, float dt, Quaternion *
     //float phi   = x_state[0];
     //float theta = x_state[1];
     //float psi   = x_state[2];
-    float phi   = 0.1;
-	float theta = 0.1;
-	float psi   = 0.1;
+    //float phi   = 0.1;
+	//float theta = 0.1;
+	//float psi   = 0.1;
     // Biases
     float bx = x_state[3];
     float by = x_state[4];

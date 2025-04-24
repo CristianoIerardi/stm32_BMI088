@@ -1,4 +1,5 @@
-Core/Src/EKF.o: ../Core/Src/EKF.c ../Core/Inc/EKF.h ../Core/Inc/BMI088.h \
+Core/Src/Filters.o: ../Core/Src/Filters.c ../Core/Inc/Filters.h \
+ ../Core/Inc/ComputeOrientation.h ../Core/Inc/BMI088.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h \
  ../Core/Inc/stm32f4xx_hal_conf.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_rcc.h \
@@ -29,9 +30,9 @@ Core/Src/EKF.o: ../Core/Src/EKF.c ../Core/Inc/EKF.h ../Core/Inc/BMI088.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_tim_ex.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_usb.h \
- ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h \
- ../Core/Inc/main.h ../Core/Inc/Serial_Comm.h ../Core/Inc/API_Comm.h
-../Core/Inc/EKF.h:
+ ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h
+../Core/Inc/Filters.h:
+../Core/Inc/ComputeOrientation.h:
 ../Core/Inc/BMI088.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -64,6 +65,3 @@ Core/Src/EKF.o: ../Core/Src/EKF.c ../Core/Inc/EKF.h ../Core/Inc/BMI088.h \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_usb.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h:
-../Core/Inc/main.h:
-../Core/Inc/Serial_Comm.h:
-../Core/Inc/API_Comm.h:

@@ -31,14 +31,6 @@ uint8_t BMI088_Init(BMI088 *imu,
 
 	uint8_t status = 0;
 
-	/* Set offset to zero */
-	imu->offset_acc[0] = 0;
-	imu->offset_acc[1] = 0;
-	imu->offset_acc[2] = 0;
-	imu->offset_gyr[0] = 0;
-	imu->offset_gyr[1] = 0;
-	imu->offset_gyr[2] = 0;
-
 	/*
 	 *
 	 * ACCELEROMETER
@@ -143,50 +135,23 @@ uint8_t BMI088_Init(BMI088 *imu,
 
 }
 
-/* FUNCTION TO FIND OFFSETS OF THE GYROSCOPE AND ACCELEROMETER DUE TO IMPERFECTIONS OF THE SENSORS */
-void BMI088_InitCalibration(BMI088 *imu, float* gyrOffset, float* accOffset, uint8_t doAccOffset, uint8_t caliLength)
+
+void Init_BMI088_Bias(BMI088* imu, int cycles)
 {
-
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);  // This led ON indicate that the sensor doesn't has to move.
-	char txBuf[128];
-
-	/*sprintf(txBuf, "Calibration, don't move the sensor\n\r");
-	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}*/
-
-	/*----Offset calculation------------------------------------------------*/
-
-	// Reset offsets
-	for(int i=0; i<3; i++)	// 3 is the number of offset: gyrX, gyrY, gyrZ
-	{
-		gyrOffset[i] = 0;
-	}
-
-	for(int j=0; j<caliLength; j++) // Calculate mean
-	{
-		gyrOffset[0] += imu->gyr_rps[0];
-		gyrOffset[1] += imu->gyr_rps[1];
-		gyrOffset[2] += imu->gyr_rps[2];
-	}
-
-	for(int i=0; i<3; i++)
-	{
-		gyrOffset[i] = gyrOffset[i] / caliLength;
-	}
-
-	/*----------------------------------------------------*/
-
-	if(doAccOffset)
-	{
-		/*compute here the accelerometer calibration*/
-	}
-
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_SET);   // Calibration ended
-
-	/*sprintf(txBuf, "Calibration complete\n\r");
-	while (CDC_Transmit_FS((uint8_t *)txBuf, strlen(txBuf)) == USBD_BUSY) {}*/
-
-
-
+    for (int i = 0; i < cycles; i++)
+    {
+        imu->gyr_bias[0] += imu->gyr_rps[0];
+        imu->gyr_bias[1] += imu->gyr_rps[1];
+        imu->gyr_bias[2] += imu->gyr_rps[2];
+        imu->acc_bias[0] += imu->acc_mps2[0];
+        imu->acc_bias[1] += imu->acc_mps2[1];
+        imu->acc_bias[2] += imu->acc_mps2[2];
+    }
+    for (int i = 0; i < 3; i++)
+    {
+    	imu->gyr_bias[i] = imu->gyr_bias[i] / cycles;
+    	imu->acc_bias[i] = imu->acc_bias[i] / cycles;
+    }
 }
 
 /*
@@ -194,7 +159,6 @@ void BMI088_InitCalibration(BMI088 *imu, float* gyrOffset, float* accOffset, uin
  * LOW-LEVEL REGISTER FUNCTIONS
  *
  */
-
 
 /* ACCELEROMETER READS ARE DIFFERENT TO GYROSCOPE READS. SEND ONE BYTE ADDRESS, READ ONE DUMMY BYTE, READ TRUE DATA !!! */
 uint8_t BMI088_ReadAccRegister(BMI088 *imu, uint8_t regAddr, uint8_t *data) {
