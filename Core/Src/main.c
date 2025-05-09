@@ -71,6 +71,11 @@ DMA_HandleTypeDef hdma_spi1_tx;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim4;
+
+UART_HandleTypeDef huart1;
+DMA_HandleTypeDef hdma_usart1_tx;
+DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 BMI088 imu;
@@ -85,6 +90,8 @@ static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_USART1_UART_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 
@@ -218,6 +225,8 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	}
 }
 
+
+
 /// Callback of the timers
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -250,14 +259,33 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     	timestamp_TIM3++;	// how many times TIM3 is called (not used yet)
 
     	// Send every data using just one string and one TX
-		char txBuff[256];
+		static char txBuff[256];
 		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
 				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr[0], gyr[1], gyr[2], acc[0], acc[1], acc[2], measureTick*1000, abs_acc); // I send the abs_acc instead the temperature just to plot it in the API graph
 		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
 	}
+
+    if (htim->Instance == TIM4)
+	{
+		static char uartBuff[256];
+		sprintf(uartBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
+					measureTick*1000, angles[0], angles[1], angles[2],
+					measureTick*1000, gyr[0], gyr[1], gyr[2], acc[0], acc[1], acc[2],
+					measureTick*1000, abs_acc);
+		//HAL_UART_Transmit(&huart1, (uint8_t*)uartBuff, strlen(uartBuff), HAL_MAX_DELAY);
+		HAL_UART_Transmit_DMA(&huart1, (uint8_t*)uartBuff, strlen(uartBuff));
+	}
 }
 
 
+/// Executed when the transmission ends
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+
+    }
+}
 
 
 
@@ -297,6 +325,8 @@ int main(void)
   MX_TIM2_Init();
   MX_USB_DEVICE_Init();
   MX_TIM3_Init();
+  MX_USART1_UART_Init();
+  MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   /*.... Priorities management .................................*/
   HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_2);
@@ -318,6 +348,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
   Init_BMI088_Bias(&imu, 1000000);
   HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
+  HAL_TIM_Base_Start_IT(&htim4);   // Start the UART transmission
   /* -------------------------------------------------------------------------- */
 
 
@@ -332,6 +363,8 @@ int main(void)
   {
 	  //Debug_SPI_DMA();
 	  Toggle(SAMPLE_TIME_MS_TOGGLE);
+
+
 
     /* USER CODE END WHILE */
 
@@ -517,6 +550,84 @@ static void MX_TIM3_Init(void)
 }
 
 /**
+  * @brief TIM4 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM4_Init(void)
+{
+
+  /* USER CODE BEGIN TIM4_Init 0 */
+
+  /* USER CODE END TIM4_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM4_Init 1 */
+
+  /* USER CODE END TIM4_Init 1 */
+  htim4.Instance = TIM4;
+  htim4.Init.Prescaler = 42-1;
+  htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim4.Init.Period = 10000-1;
+  htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim4, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM4_Init 2 */
+
+  /* USER CODE END TIM4_Init 2 */
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -529,9 +640,15 @@ static void MX_DMA_Init(void)
   /* DMA2_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+  /* DMA2_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
   /* DMA2_Stream3_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
+  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+  /* DMA2_Stream7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
 
 }
 
@@ -589,10 +706,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
+  HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI3_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
