@@ -103,6 +103,7 @@ static void MX_TIM4_Init(void);
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// GLOBAL VARIABLES ////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/*------------------------------------------------------------------------*/
 /* Clock and period, frequency, params of timers */
 const float f_CK = 84000000; 				// [Hz] clock frequency. See .ioc files
 float T_TIM2 = 0;							// seconds. This is the call period of the timer TIM2
@@ -116,9 +117,7 @@ uint32_t measureTick = 0;					// Tick corresponding to the timestamp of the curr
 /* Variables for algorithms */
 Quaternion q = {1, 0, 0, 0}; 				// Initial state
 /*------------------------------------------------------------------------*/
-/* Shared variables */
-/*------------------------------------------------------------------------*/
-
+/* Shared variables and string to be sent format */
 #define PACKET_HEADER 0xAABBCCDD
 #define PACKET_FOOTER 0XEE8899FF
 
@@ -133,12 +132,6 @@ typedef struct __attribute__((packed)) {
 
 BinaryPacket pkt;
 
-
-/*float gyr[3] = {0.0f, 0.0f, 0.0f}; 				// gyro data
-float acc[3] = {0.0f, 0.0f, 0.0f}; 				// acc data
-float ang[3] = {0,0,0};						// euler angles
-float abs_acc = 0;*/
-
 /*------------------------------------------------------------------------*/
 /* Timers */
 uint32_t timerUSB = 0;
@@ -152,8 +145,6 @@ float f_LP_angles = 5.0f;  // LP freq cut frequency in Hz of angles values calcu
 
 float f_HP_gyr = 0.0001f; // HP freq cut frequency in Hz of gyro
 float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
-
-
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -244,24 +235,42 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	}
 }
 
+/**
+ * @brief Prints the contents of a BinaryPacket in hexadecimal format over USB CDC.
+ *
+ * This function takes a pointer to a BinaryPacket structure, converts its content
+ * to hexadecimal representation, and sends it over USB (CDC_Transmit_FS). The output
+ * is split into lines of 48 bytes for readability. Each byte is printed as two hex digits
+ * followed by a space. A carriage return and newline ("\r\n") is inserted at the end of each line.
+ *
+ * @param[in] p Pointer to the BinaryPacket structure to be printed.
+ */
 void print_packet_hex(BinaryPacket* p) {
-    uint8_t* bytePtr = (uint8_t*)p;
-    char buffer[248]; // Puoi aumentare se ti serve
-    int len = 0;
+    uint8_t* bytePtr = (uint8_t*)p;       ///< Pointer to the raw bytes of the packet
+    char buffer[248];                     ///< Temporary buffer to hold the formatted string
+    int len = 0;                          ///< Current length of the buffer
 
     for (int i = 0; i < sizeof(BinaryPacket); i++) {
+        // Format one byte as two hexadecimal characters followed by a space
         len += snprintf((char*)&buffer[len], sizeof(buffer) - len, "%02X ", bytePtr[i]);
 
-        // Stampa a righe di 48 byte (opzionale)
+        // Send a line every 48 bytes or at the end of the packet
         if ((i + 1) % 48 == 0 || i == sizeof(BinaryPacket) - 1) {
             buffer[len++] = '\r';
             buffer[len++] = '\n';
+
+            // Transmit the formatted buffer over USB CDC
             CDC_Transmit_FS((uint8_t*)buffer, len);
+
+            // Reset buffer length for the next line
             len = 0;
-            //HAL_Delay(1);  // piccolo delay per evitare overflow USB
+
+            // Optional small delay to prevent USB buffer overflow
+            // HAL_Delay(1);
         }
     }
 }
+
 
 
 /// Callback of the timers
@@ -309,12 +318,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     	/*------- SEND STRING --------------------------*/
 		static char uartBuff[256];
+		/* If you want to send the string (too many bytes...) */
 		/* sprintf(uartBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
 					measureTick, pkt.ang[0], pkt.ang[1], pkt.ang[2],
 					measureTick, pkt.gyr[0], pkt.gyr[1], pkt.gyr[2], pkt.acc[0], pkt.acc[1], pkt.acc[2],
 					measureTick, pkt.abs_acc);
 
-		//HAL_UART_Transmit(&huart1, (uint8_t*)uartBuff, strlen(uartBuff), HAL_MAX_DELAY);
 		HAL_UART_Transmit_DMA(&huart1, (uint8_t*)uartBuff, strlen(uartBuff));
 		//CDC_Transmit_FS((uint8_t *) uartBuff, strlen(uartBuff));*/
 
@@ -322,18 +331,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     	pkt.header = PACKET_HEADER;
     	pkt.footer = PACKET_FOOTER;
 
-    	/*pkt.timestamp = 2846468521;	//A9A9A9A9
-    	pkt.ang[0] = 60.2;
-    	pkt.ang[1] = 10.3;
-    	pkt.ang[2] = 38.4;
-    	pkt.gyr[0] = 7.3;
-    	pkt.gyr[1] = 8.1;
-    	pkt.gyr[2] = 5.5;
-    	pkt.acc[0] = 68.2;
-    	pkt.acc[1] = 72.2;
-    	pkt.acc[2] = 41.8;
-
-    	pkt.timestamp = HAL_GetTick();
+    	/*// HEX data debug
+    	pkt.timestamp = HAL_GetTick();		// 2846468521 --> A9A9A9A9
 		pkt.ang[0] = 0;
 		pkt.ang[1] = 0;
 		pkt.ang[2] = 0;
@@ -342,26 +341,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		pkt.gyr[2] = 0;
 		pkt.acc[0] = 0;  //-71.954;
 		pkt.acc[1] = 0;  //-152.49;
-		pkt.acc[2] = 0;  //-21.6;*/
+		pkt.acc[2] = 0;  //-21.6;
+		*/
 
-    	/* DEBUG SENT DATA */
-    	//print_packet_hex(&pkt);
+    	//print_packet_hex(&pkt);		// Function to debug the sent HEX string
     	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
-    	//CDC_Transmit_FS((uint8_t *) uartBuff, strlen(uartBuff));
-    	//CDC_Transmit_FS((uint8_t*)&pkt, sizeof(pkt));
 
-		Toggle(SAMPLE_TIME_MS_TOGGLE);
+		Toggle(SAMPLE_TIME_MS_TOGGLE);	// Function that toggle the led
 	}
-}
-
-
-/// Executed when the transmission ends
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == USART1)
-    {
-
-    }
 }
 
 
@@ -426,8 +413,8 @@ int main(void)
   /* ----- START TIMERS ------------------------------------------------------- */
   HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
   Init_BMI088_Bias(&imu, 1000000);
-  //HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
-  HAL_TIM_Base_Start_IT(&htim4);   // Start the UART transmission
+  //HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface !!!!!!!!!!!!!!!!!!!!!!!!!
+  HAL_TIM_Base_Start_IT(&htim4);   // Start the UART transmission to ESP32
   /* -------------------------------------------------------------------------- */
 
 
