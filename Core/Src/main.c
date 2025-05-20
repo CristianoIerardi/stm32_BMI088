@@ -117,10 +117,27 @@ uint32_t measureTick = 0;					// Tick corresponding to the timestamp of the curr
 Quaternion q = {1, 0, 0, 0}; 				// Initial state
 /*------------------------------------------------------------------------*/
 /* Shared variables */
-float gyr[3] = {0.0f, 0.0f, 0.0f}; 				// gyro data
+/*------------------------------------------------------------------------*/
+
+#define PACKET_HEADER 0xAABBCCDD
+#define PACKET_FOOTER 0XEE8899FF
+
+typedef struct __attribute__((packed)) {
+    uint32_t header;      // 0xDDCCBBAA
+    uint32_t timestamp;
+    float ang[3];
+    float gyr[3];
+    float acc[3];
+    uint32_t footer;       // 0xFF9988EE
+} BinaryPacket;
+
+BinaryPacket pkt;
+
+
+/*float gyr[3] = {0.0f, 0.0f, 0.0f}; 				// gyro data
 float acc[3] = {0.0f, 0.0f, 0.0f}; 				// acc data
-float angles[3] = {0,0,0};						// euler angles
-float abs_acc = 0;
+float ang[3] = {0,0,0};						// euler angles
+float abs_acc = 0;*/
 
 /*------------------------------------------------------------------------*/
 /* Timers */
@@ -138,9 +155,11 @@ float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
 
 
 
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 /// Function that toggles the led of the board to show if the device is working
 void Toggle(uint32_t waitingTime)
 {
@@ -174,19 +193,19 @@ void Debug_SPI_DMA()
 /// Function to insert IMU measurements from memory to memory (data is adjusted)
 void Take_IMU_Measurements(BMI088 *imu)
 {
-	measureTick = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
+	pkt.timestamp = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
 
 	/* Here a sign and axis correction is applied.
 	 * In the rest of the code I will use gyr and acc that are the shared variables
 	 * elaborated by the algorithms while instead, in imu->___[__] there are pure values
 	 * taken from the memory of the sensor BMI088
 	 */
-	gyr[0] = -imu->gyr_rps[1] + imu->gyr_bias[1];			// + 0.0051;
-	gyr[1] = imu->gyr_rps[0] - imu->gyr_bias[0];			// + 0.0025;
-	gyr[2] = imu->gyr_rps[2] - imu->gyr_bias[2];			// + 0.0047;
-	acc[0] = -imu->acc_mps2[1];
-	acc[1] = imu->acc_mps2[0];
-	acc[2] = imu->acc_mps2[2];
+	pkt.gyr[0] = -imu->gyr_rps[1] + imu->gyr_bias[1];			// + 0.0051;
+	pkt.gyr[1] = imu->gyr_rps[0] - imu->gyr_bias[0];			// + 0.0025;
+	pkt.gyr[2] = imu->gyr_rps[2] - imu->gyr_bias[2];			// + 0.0047;
+	pkt.acc[0] = -imu->acc_mps2[1];
+	pkt.acc[1] = imu->acc_mps2[0];
+	pkt.acc[2] = imu->acc_mps2[2];
 }
 
 /// DMA Reading
@@ -225,6 +244,24 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	}
 }
 
+void print_packet_hex(BinaryPacket* p) {
+    uint8_t* bytePtr = (uint8_t*)p;
+    char buffer[248]; // Puoi aumentare se ti serve
+    int len = 0;
+
+    for (int i = 0; i < sizeof(BinaryPacket); i++) {
+        len += snprintf((char*)&buffer[len], sizeof(buffer) - len, "%02X ", bytePtr[i]);
+
+        // Stampa a righe di 48 byte (opzionale)
+        if ((i + 1) % 48 == 0 || i == sizeof(BinaryPacket) - 1) {
+            buffer[len++] = '\r';
+            buffer[len++] = '\n';
+            CDC_Transmit_FS((uint8_t*)buffer, len);
+            len = 0;
+            //HAL_Delay(1);  // piccolo delay per evitare overflow USB
+        }
+    }
+}
 
 
 /// Callback of the timers
@@ -238,18 +275,18 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         Take_IMU_Measurements(&imu);
 
         /// Filtering Gyro and Acc measurements
-        filt = LPF_GyrAcc_Update_All(&filt, gyr, acc);
+        filt = LPF_GyrAcc_Update_All(&filt, pkt.gyr, pkt.acc);
 
 		/// Algorithm application to find angles
-        MadgwickAHRSupdateIMU(gyr[0], gyr[1], gyr[2], acc[0], acc[1], acc[2], F_TIM2);
+        MadgwickAHRSupdateIMU(pkt.gyr[0], pkt.gyr[1], pkt.gyr[2], pkt.acc[0], pkt.acc[1], pkt.acc[2], F_TIM2);
         q.w = q0; q.x = q1; q.y = q2; q.z = q3;
-        QuaternionToEuler(q, angles);
+        QuaternionToEuler(q, pkt.ang);
 
         /* LPF Filtering angles */
         //filt = LPF_Angles_Update_All(&filt, angles);
 
         /* module of the acceleration vector (not used right now) */
-        abs_acc = sqrt(pow(acc[0],2)+pow(acc[1],2) + pow(acc[2],2));
+        //pkt.abs_acc = sqrt(pow(pkt.acc[0],2)+pow(pkt.acc[1],2) + pow(pkt.acc[2],2));
 
     }
 
@@ -260,20 +297,60 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     	// Send every data using just one string and one TX
 		static char txBuff[256];
-		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
-				measureTick*1000, angles[0], angles[1], angles[2],measureTick*1000, gyr[0], gyr[1], gyr[2], acc[0], acc[1], acc[2], measureTick*1000, abs_acc); // I send the abs_acc instead the temperature just to plot it in the API graph
+		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n",
+				measureTick, pkt.ang[0], pkt.ang[1], pkt.ang[2],
+				measureTick, pkt.gyr[0], pkt.gyr[1], pkt.gyr[2], pkt.acc[0], pkt.acc[1], pkt.acc[2]);
+				//measureTick, pkt.abs_acc); // I send the abs_acc instead the temperature just to plot it in the API graph
 		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
 	}
 
     if (htim->Instance == TIM4)
 	{
+
+    	/*------- SEND STRING --------------------------*/
 		static char uartBuff[256];
-		sprintf(uartBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
-					measureTick*1000, angles[0], angles[1], angles[2],
-					measureTick*1000, gyr[0], gyr[1], gyr[2], acc[0], acc[1], acc[2],
-					measureTick*1000, abs_acc);
+		/* sprintf(uartBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
+					measureTick, pkt.ang[0], pkt.ang[1], pkt.ang[2],
+					measureTick, pkt.gyr[0], pkt.gyr[1], pkt.gyr[2], pkt.acc[0], pkt.acc[1], pkt.acc[2],
+					measureTick, pkt.abs_acc);
+
 		//HAL_UART_Transmit(&huart1, (uint8_t*)uartBuff, strlen(uartBuff), HAL_MAX_DELAY);
 		HAL_UART_Transmit_DMA(&huart1, (uint8_t*)uartBuff, strlen(uartBuff));
+		//CDC_Transmit_FS((uint8_t *) uartBuff, strlen(uartBuff));*/
+
+    	/*------- SEND NUMBER --------------------------*/
+    	pkt.header = PACKET_HEADER;
+    	pkt.footer = PACKET_FOOTER;
+
+    	/*pkt.timestamp = 2846468521;	//A9A9A9A9
+    	pkt.ang[0] = 60.2;
+    	pkt.ang[1] = 10.3;
+    	pkt.ang[2] = 38.4;
+    	pkt.gyr[0] = 7.3;
+    	pkt.gyr[1] = 8.1;
+    	pkt.gyr[2] = 5.5;
+    	pkt.acc[0] = 68.2;
+    	pkt.acc[1] = 72.2;
+    	pkt.acc[2] = 41.8;
+
+    	pkt.timestamp = HAL_GetTick();
+		pkt.ang[0] = 0;
+		pkt.ang[1] = 0;
+		pkt.ang[2] = 0;
+		pkt.gyr[0] = 0;
+		pkt.gyr[1] = 0;
+		pkt.gyr[2] = 0;
+		pkt.acc[0] = 0;  //-71.954;
+		pkt.acc[1] = 0;  //-152.49;
+		pkt.acc[2] = 0;  //-21.6;*/
+
+    	/* DEBUG SENT DATA */
+    	//print_packet_hex(&pkt);
+    	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
+    	//CDC_Transmit_FS((uint8_t *) uartBuff, strlen(uartBuff));
+    	//CDC_Transmit_FS((uint8_t*)&pkt, sizeof(pkt));
+
+		Toggle(SAMPLE_TIME_MS_TOGGLE);
 	}
 }
 
@@ -334,6 +411,8 @@ int main(void)
   HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
   HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
   HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
+  HAL_NVIC_SetPriority(TIM4_IRQn, 2, 0);
+  HAL_NVIC_EnableIRQ(TIM4_IRQn);
   /*............................................................*/
 
   HAL_Delay(1000);
@@ -347,7 +426,7 @@ int main(void)
   /* ----- START TIMERS ------------------------------------------------------- */
   HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
   Init_BMI088_Bias(&imu, 1000000);
-  HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
+  //HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface
   HAL_TIM_Base_Start_IT(&htim4);   // Start the UART transmission
   /* -------------------------------------------------------------------------- */
 
