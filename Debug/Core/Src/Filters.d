@@ -31,7 +31,8 @@ Core/Src/Filters.o: ../Core/Src/Filters.c ../Core/Inc/Filters.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_uart.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd.h \
  ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_usb.h \
- ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h
+ ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h \
+ ../Core/Inc/config.h
 ../Core/Inc/Filters.h:
 ../Core/Inc/ComputeOrientation.h:
 ../Core/Inc/BMI088.h:
@@ -67,3 +68,4 @@ Core/Src/Filters.o: ../Core/Src/Filters.c ../Core/Inc/Filters.h \
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_ll_usb.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_pcd_ex.h:
+../Core/Inc/config.h:

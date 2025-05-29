@@ -9,6 +9,7 @@
 #define INC_BMI088_H_
 
 #include "stm32f4xx_hal.h"
+#include "config.h"
 
 /** @defgroup BMI088_Register_Definitions
  *  @brief BMI088 register addresses
@@ -97,6 +98,14 @@ void Init_BMI088_Bias(BMI088* imu, int cycles);
  * @retval 0 if success, non-zero if error
  */
 uint8_t BMI088_ReadAccRegister(BMI088 *imu, uint8_t regAddr, uint8_t *data);
+
+
+/**
+ * @brief It insert value of BMI088 into the structure and it convert data on our convention
+ * @param imu Pointer to BMI088 structure
+ * @param pkt Struct to send to ESP32 for the UDP communication
+ */
+void Take_IMU_Measurements(BMI088 *imu, BinaryPacket *pkt);
 
 /**
  * @brief Read a register from the gyroscope.

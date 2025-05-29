@@ -19,6 +19,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "config.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -54,7 +55,8 @@
 								// 1 if we use SERIAL
 
 //#define SAMPLE_TIME_MS_USB  	10
-#define SAMPLE_TIME_MS_TOGGLE  	500
+//#define SAMPLE_TIME_MS_TOGGLE  	500
+uint8_t SAMPLE_TIME_MS_TOGGLE = 500;
 
 /* USER CODE END PD */
 
@@ -121,14 +123,6 @@ Quaternion q = {1, 0, 0, 0}; 				// Initial state
 #define PACKET_HEADER 0xAABBCCDD
 #define PACKET_FOOTER 0XEE8899FF
 
-typedef struct __attribute__((packed)) {
-    uint32_t header;      // 0xDDCCBBAA
-    uint32_t timestamp;
-    float ang[3];
-    float gyr[3];
-    float acc[3];
-    uint32_t footer;       // 0xFF9988EE
-} BinaryPacket;
 
 BinaryPacket pkt;
 
@@ -181,23 +175,6 @@ void Debug_SPI_DMA()
   	}
 }
 
-/// Function to insert IMU measurements from memory to memory (data is adjusted)
-void Take_IMU_Measurements(BMI088 *imu)
-{
-	pkt.timestamp = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
-
-	/* Here a sign and axis correction is applied.
-	 * In the rest of the code I will use gyr and acc that are the shared variables
-	 * elaborated by the algorithms while instead, in imu->___[__] there are pure values
-	 * taken from the memory of the sensor BMI088
-	 */
-	pkt.gyr[0] = -imu->gyr_rps[1] + imu->gyr_bias[1];			// + 0.0051;
-	pkt.gyr[1] = imu->gyr_rps[0] - imu->gyr_bias[0];			// + 0.0025;
-	pkt.gyr[2] = imu->gyr_rps[2] - imu->gyr_bias[2];			// + 0.0047;
-	pkt.acc[0] = -imu->acc_mps2[1];
-	pkt.acc[1] = imu->acc_mps2[0];
-	pkt.acc[2] = imu->acc_mps2[2];
-}
 
 /// DMA Reading
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -281,7 +258,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     {
     	timestamp_TIM2++;	// how many times TIM2 is called (not used yet)
         // Code to execute at constant sample rate
-        Take_IMU_Measurements(&imu);
+        Take_IMU_Measurements(&imu, &pkt);
 
         /// Filtering Gyro and Acc measurements
         filt = LPF_GyrAcc_Update_All(&filt, pkt.gyr, pkt.acc);
@@ -317,7 +294,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 
     	/*------- SEND STRING --------------------------*/
-		static char uartBuff[256];
+		//static char uartBuff[256];
 		/* If you want to send the string (too many bytes...) */
 		/* sprintf(uartBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
 					measureTick, pkt.ang[0], pkt.ang[1], pkt.ang[2],

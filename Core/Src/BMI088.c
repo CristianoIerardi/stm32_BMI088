@@ -5,7 +5,7 @@
  *      Author: crist
  */
 
-
+#include "config.h"
 #include "BMI088.h"
 
 /*
@@ -152,6 +152,25 @@ void Init_BMI088_Bias(BMI088* imu, int cycles)
     	imu->gyr_bias[i] = imu->gyr_bias[i] / cycles;
     	imu->acc_bias[i] = imu->acc_bias[i] / cycles;
     }
+}
+
+
+/// Function to insert IMU measurements from memory to memory (data is adjusted)
+void Take_IMU_Measurements(BMI088 *imu, BinaryPacket *pkt)
+{
+	pkt->timestamp = HAL_GetTick();		// Timestamp when data is taken from memory to memory (not from BMI088 to memory!)
+
+	/* Here a sign and axis correction is applied.
+	 * In the rest of the code I will use gyr and acc that are the shared variables
+	 * elaborated by the algorithms while instead, in imu->___[__] there are pure values
+	 * taken from the memory of the sensor BMI088
+	 */
+	pkt->gyr[0] = -imu->gyr_rps[1] + imu->gyr_bias[1];			// + 0.0051;
+	pkt->gyr[1] = imu->gyr_rps[0] - imu->gyr_bias[0];			// + 0.0025;
+	pkt->gyr[2] = imu->gyr_rps[2] - imu->gyr_bias[2];			// + 0.0047;
+	pkt->acc[0] = -imu->acc_mps2[1];
+	pkt->acc[1] = imu->acc_mps2[0];
+	pkt->acc[2] = imu->acc_mps2[2];
 }
 
 /*

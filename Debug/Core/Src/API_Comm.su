@@ -1,2 +1,2 @@
-../Core/Src/API_Comm.c:24:6:API_PrintAngles	184	static
-../Core/Src/API_Comm.c:77:6:API_SendInertial	240	static
+../Core/Src/API_Comm.c:27:6:API_PrintAngles	184	static
+../Core/Src/API_Comm.c:41:6:API_SendInertial	240	static
