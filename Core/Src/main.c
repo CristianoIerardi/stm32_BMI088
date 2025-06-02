@@ -19,7 +19,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "config.h"
 #include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -32,6 +31,8 @@
 #include "Filters.h"
 #include "MadgwickAHRS.h"
 #include <math.h>
+#include "string.h"
+#include "stdlib.h"
 
 //#ifdef USE_SERIAL
 	//#include "Serial_Comm.h"
@@ -56,7 +57,7 @@
 
 //#define SAMPLE_TIME_MS_USB  	10
 //#define SAMPLE_TIME_MS_TOGGLE  	500
-uint8_t SAMPLE_TIME_MS_TOGGLE = 500;
+uint32_t SAMPLE_TIME_MS_TOGGLE = 1000;
 
 /* USER CODE END PD */
 
@@ -118,11 +119,11 @@ uint32_t measureTick = 0;					// Tick corresponding to the timestamp of the curr
 /*------------------------------------------------------------------------*/
 /* Variables for algorithms */
 Quaternion q = {1, 0, 0, 0}; 				// Initial state
+
 /*------------------------------------------------------------------------*/
 /* Shared variables and string to be sent format */
 #define PACKET_HEADER 0xAABBCCDD
 #define PACKET_FOOTER 0XEE8899FF
-
 
 BinaryPacket pkt;
 
@@ -140,6 +141,17 @@ float f_LP_angles = 5.0f;  // LP freq cut frequency in Hz of angles values calcu
 float f_HP_gyr = 0.0001f; // HP freq cut frequency in Hz of gyro
 float f_HP_acc = 0.0001f; // HP freq cut frequency in Hz of acc
 
+/*------------------------------------------------------------------------*/
+/* UART rx communication */
+/*#define RX_BUFFER_SIZE 32		// dimension of the buffer. the string from ESP32 must have a length
+char rx_uart_buff[64];
+*/
+#define UART_RX_BUFFER_SIZE 64
+uint8_t rx_uart_buff[UART_RX_BUFFER_SIZE];
+uint8_t rx_byte;
+uint16_t rx_index = 0;
+
+
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -156,6 +168,34 @@ void Toggle(uint32_t waitingTime)
 	}
 	timerUSB = HAL_GetTick();
 }
+
+
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        if (rx_byte == '\n' || rx_byte == '\r')
+        {
+            rx_uart_buff[rx_index] = '\0';  // termina stringa
+            HandleReceivedString((char*)rx_uart_buff);
+            rx_index = 0;
+        }
+        else
+        {
+            if (rx_index < UART_RX_BUFFER_SIZE - 1)
+            {
+                rx_uart_buff[rx_index++] = rx_byte;
+            }
+            else
+            {
+                rx_index = 0;  // overflow protection
+            }
+        }
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);  // restart interrupt
+    }
+}
+
 
 /// Function to show some SPI and DMA parameter
 void Debug_SPI_DMA()
@@ -394,6 +434,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim4);   // Start the UART transmission to ESP32
   /* -------------------------------------------------------------------------- */
 
+  HAL_UART_Receive_IT(&huart1, (uint8_t*)rx_uart_buff, 1);
 
 
   /* USER CODE END 2 */

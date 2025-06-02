@@ -1,2 +1,2 @@
-../Core/Src/API_Comm.c:27:6:API_PrintAngles	1
-../Core/Src/API_Comm.c:41:6:API_SendInertial	1
+../Core/Src/API_Comm.c:64:9:is_valid_number	6
+../Core/Src/API_Comm.c:83:6:HandleReceivedString	6
