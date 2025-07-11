@@ -33,6 +33,7 @@
 #include <math.h>
 #include "string.h"
 #include "stdlib.h"
+#include "mcp3564.h"
 
 //#ifdef USE_SERIAL
 	//#include "Serial_Comm.h"
@@ -56,8 +57,7 @@
 								// 1 if we use SERIAL
 
 //#define SAMPLE_TIME_MS_USB  	10
-//#define SAMPLE_TIME_MS_TOGGLE  	500
-uint32_t SAMPLE_TIME_MS_TOGGLE = 1000;
+uint32_t SAMPLE_TIME_MS_TOGGLE = 1000;	// For blinking led (to debug the code with the function Toggle(__))
 
 /* USER CODE END PD */
 
@@ -69,20 +69,23 @@ uint32_t SAMPLE_TIME_MS_TOGGLE = 1000;
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+SPI_HandleTypeDef hspi2;
 DMA_HandleTypeDef hdma_spi1_rx;
 DMA_HandleTypeDef hdma_spi1_tx;
+DMA_HandleTypeDef hdma_spi2_rx;
+DMA_HandleTypeDef hdma_spi2_tx;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
+TIM_HandleTypeDef htim9;
 
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
-DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 BMI088 imu;
-LPF_FILTER filt;
+LPF_FILTER filt;	// Filter object of IMU sensor
 
 /* USER CODE END PV */
 
@@ -95,6 +98,8 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM4_Init(void);
+static void MX_SPI2_Init(void);
+static void MX_TIM9_Init(void);
 /* USER CODE BEGIN PFP */
 
 
@@ -112,19 +117,18 @@ const float f_CK = 84000000; 				// [Hz] clock frequency. See .ioc files
 float T_TIM2 = 0;							// seconds. This is the call period of the timer TIM2
 float F_TIM2 = 0;
 
-uint32_t timestamp_TIM3 = 0;				// Number of times that TIM3 is called
-uint32_t timestamp_TIM2 = 0;				// Number of times that TIM2 is called
+uint32_t timestamp_TIM3 = 0;				// Number of times that TIM3 is called (for debug)
+uint32_t timestamp_TIM2 = 0;				// Number of times that TIM2 is called (for debug)
 uint32_t measureTick = 0;					// Tick corresponding to the timestamp of the current measurement
 
 /*------------------------------------------------------------------------*/
 /* Variables for algorithms */
-Quaternion q = {1, 0, 0, 0}; 				// Initial state
+Quaternion q = {1, 0, 0, 0}; 				// Variable for madgwick algorithm. {1,0,0,0} is the Initial state --> not moving
 
 /*------------------------------------------------------------------------*/
 /* Shared variables and string to be sent format */
 #define PACKET_HEADER 0xAABBCCDD
 #define PACKET_FOOTER 0XEE8899FF
-
 BinaryPacket pkt;
 
 /*------------------------------------------------------------------------*/
@@ -151,12 +155,63 @@ uint8_t rx_uart_buff[UART_RX_BUFFER_SIZE];
 uint8_t rx_byte;
 uint16_t rx_index = 0;
 
+/*------------------------------------------------------------------------*/
+/* MCP3564R Sensor params */
+float adc[4];			// Voltage value of the mesurement of different channels
+uint8_t allDiffCh = 0;		// if 1 it means that we are ready for sending data
+bool setup_done;
+
+/*------------------------------------------------------------------------*/
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 /////// FUNCTIONS //////////////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++ PRIORITIES SETTINGS +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+void SetPriorities(void)
+{
+	 HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_2);
 
+	  // DMA: max priority
+	  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
+	  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 2);
+	  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 1);   // RX SPI2
+	  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 3);   // TX SPI2
+
+	  // USB CDC (OTG_FS) - high but under DMA
+	  HAL_NVIC_SetPriority(OTG_FS_IRQn, 0, 4);
+
+	  // EXTI (GPIO sensors)
+	  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
+	  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
+	  HAL_NVIC_SetPriority(EXTI4_IRQn, 1, 2);
+
+	  // UART (commands and debug)
+	  HAL_NVIC_SetPriority(USART1_IRQn, 1, 2);
+
+	  // Timer - low priority
+	  HAL_NVIC_SetPriority(TIM4_IRQn, 2, 0);
+	  HAL_NVIC_SetPriority(TIM2_IRQn, 2, 1);  // If we use TIM2
+
+	  // Enable
+	  HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
+	  HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
+	  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
+	  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
+	  HAL_NVIC_EnableIRQ(OTG_FS_IRQn);
+	  HAL_NVIC_EnableIRQ(EXTI2_IRQn);
+	  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+	  HAL_NVIC_EnableIRQ(EXTI4_IRQn);
+	  HAL_NVIC_EnableIRQ(USART1_IRQn);
+	  HAL_NVIC_EnableIRQ(TIM4_IRQn);
+	  HAL_NVIC_EnableIRQ(TIM2_IRQn);
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//+++++ DEBUG FUNCTIONS ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 /// Function that toggles the led of the board to show if the device is working
 void Toggle(uint32_t waitingTime)
 {
@@ -168,90 +223,6 @@ void Toggle(uint32_t waitingTime)
 	}
 	timerUSB = HAL_GetTick();
 }
-
-
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-    if (huart->Instance == USART1)
-    {
-        if (rx_byte == '\n' || rx_byte == '\r')
-        {
-            rx_uart_buff[rx_index] = '\0';  // termina stringa
-            HandleReceivedString((char*)rx_uart_buff);
-            rx_index = 0;
-        }
-        else
-        {
-            if (rx_index < UART_RX_BUFFER_SIZE - 1)
-            {
-                rx_uart_buff[rx_index++] = rx_byte;
-            }
-            else
-            {
-                rx_index = 0;  // overflow protection
-            }
-        }
-        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);  // restart interrupt
-    }
-}
-
-
-/// Function to show some SPI and DMA parameter
-void Debug_SPI_DMA()
-{
-
-  	HAL_SPI_StateTypeDef spiState = imu.spiHandle->State;
-  	HAL_DMA_StateTypeDef dmaRxState = imu.spiHandle->hdmarx->State;
-
-  	char txBuff[32];
-  	sprintf(txBuff, "%u\t%u\n\r", spiState, dmaRxState);
-  	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
-
-  	if (__HAL_DMA_GET_IT_SOURCE(imu.spiHandle->hdmarx, DMA_IT_TC) == RESET)
-  	{
-  		sprintf(txBuff, "#\n\r");
-  		while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
-  	}
-}
-
-
-/// DMA Reading
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{   // we have an interrupt
-	if(GPIO_Pin == INT_ACC_Pin)
-	{
-		// we check if the interrupt pin is the accelerometer one
-		if (!imu.readingAcc)
-			BMI088_ReadAccelerometerDMA(&imu);	// if yes read from the DMA memory
-	}
-	else if(GPIO_Pin == INT_GYR_Pin)
-	{
-		// we check if the interrupt pin is the gyroscope one
-		if (!imu.readingGyr)
-			BMI088_ReadGyroscopeDMA(&imu);
-	}
-
-}
-
-/// DMA CALLBACK
-void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the transfer has been completed
-{
-	if(hspi->Instance == SPI1)		// Check if it is the correct SPI (we want SPI1)
-	{
-		if (imu.readingAcc)
-		{
-			BMI088_ReadAccelerometerDMA_Complete(&imu);
-
-		}
-
-		if (imu.readingGyr)
-		{
-			BMI088_ReadGyroscopeDMA_Complete(&imu);
-		}
-	}
-}
-
 /**
  * @brief Prints the contents of a BinaryPacket in hexadecimal format over USB CDC.
  *
@@ -288,9 +259,105 @@ void print_packet_hex(BinaryPacket* p) {
     }
 }
 
+void Debug_SPI_DMA()
+{
+
+  	HAL_SPI_StateTypeDef spiState = imu.spiHandle->State;
+  	HAL_DMA_StateTypeDef dmaRxState = imu.spiHandle->hdmarx->State;
+
+  	char txBuff[32];
+  	sprintf(txBuff, "%u\t%u\n\r", spiState, dmaRxState);
+  	while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+
+  	if (__HAL_DMA_GET_IT_SOURCE(imu.spiHandle->hdmarx, DMA_IT_TC) == RESET)
+  	{
+  		sprintf(txBuff, "#\n\r");
+  		while(CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff)) == HAL_BUSY);
+  	}
+}
+
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//+++++ CALLBACK FUNCTIONS +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/// UART CALLBACK FUNCTION
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1)
+    {
+        if (rx_byte == '\n' || rx_byte == '\r')
+        {
+            rx_uart_buff[rx_index] = '\0';  // termina stringa
+            HandleReceivedString((char*)rx_uart_buff);
+            rx_index = 0;
+        }
+        else
+        {
+            if (rx_index < UART_RX_BUFFER_SIZE - 1)
+            {
+                rx_uart_buff[rx_index++] = rx_byte;
+            }
+            else
+            {
+                rx_index = 0;  // overflow protection
+            }
+        }
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);  // restart interrupt
+    }
+}
 
 
-/// Callback of the timers
+
+/// DMA Start Reading
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{   // we have an interrupt
+	if(GPIO_Pin == INT_ACC_Pin)				/// DMA2
+	{
+		// we check if the interrupt pin is the accelerometer one
+		if (!imu.readingAcc)
+			BMI088_ReadAccelerometerDMA(&imu);	// if yes read from the DMA memory
+	}
+		else if(GPIO_Pin == INT_GYR_Pin)	/// DMA2
+		{
+		// we check if the interrupt pin is the gyroscope one
+		if (!imu.readingGyr)
+			BMI088_ReadGyroscopeDMA(&imu);
+	}
+	else if (GPIO_Pin == MCP3564_IRQ_Pin) {	/// DMA1
+		if(setup_done)
+		{
+			MCP3561_StartReadADCData_DMA(&hspi2);			// Start reading with DMA1
+			//allDiffCh = MCP3561_ReadADCData(&hspi2, adc);	// It read the value from the sensor MCP3564R and it writes into the variable adc[4] the measurements
+		}
+	}
+}
+
+
+/// DMA CALLBACK
+void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the transfer has been completed
+{
+	if(hspi->Instance == SPI1)	// SPI1 used for Acc and Gyro
+	{
+		if (imu.readingAcc)
+		{
+			BMI088_ReadAccelerometerDMA_Complete(&imu);
+
+		}
+
+		if (imu.readingGyr)
+		{
+			BMI088_ReadGyroscopeDMA_Complete(&imu);
+		}
+	}
+	if (hspi->Instance == SPI2)	// SPI2 used for MCP3564R sensor
+	{
+		HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
+		allDiffCh = MCP3561_ReadADCData_DMA(&hspi2, adc);	// It change the global variable adc[4] with the update value
+	}
+}
+
+
+/// /// TIMERS CALLBACK
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	// Calculate angles with quaternions
@@ -364,11 +431,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     	//print_packet_hex(&pkt);		// Function to debug the sent HEX string
     	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
 
-		Toggle(SAMPLE_TIME_MS_TOGGLE);	// Function that toggle the led
+
 	}
 }
 
 
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+//++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 /* USER CODE END 0 */
 
@@ -380,7 +450,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
+	setup_done = false;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -408,45 +478,63 @@ int main(void)
   MX_TIM3_Init();
   MX_USART1_UART_Init();
   MX_TIM4_Init();
+  MX_SPI2_Init();
+  MX_TIM9_Init();
   /* USER CODE BEGIN 2 */
-  /*.... Priorities management .................................*/
-  HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_2);
-  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
-  HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 1);
-  HAL_NVIC_SetPriority(EXTI2_IRQn, 1, 0);
-  HAL_NVIC_SetPriority(EXTI3_IRQn, 1, 1);
-  HAL_NVIC_SetPriority(TIM4_IRQn, 2, 0);
-  HAL_NVIC_EnableIRQ(TIM4_IRQn);
-  /*............................................................*/
 
-  HAL_Delay(1000);
+  SetPriorities();	// function to set priorities
 
+  HAL_Delay(500);
+
+  /* ----- BMI088 and MADGWICK SETUP ------------------------------------------*/
   BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
   SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
   Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, f_LP_angles, T_TIM2);
 
-  HAL_Delay(1000);
+  HAL_Delay(500);
 
-  /* ----- START TIMERS ------------------------------------------------------- */
-  HAL_TIM_Base_Start_IT(&htim2);   // Start timer: calculation of the algorithm
-  Init_BMI088_Bias(&imu, 1000000);
-  //HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface !!!!!!!!!!!!!!!!!!!!!!!!!
-  HAL_TIM_Base_Start_IT(&htim4);   // Start the UART transmission to ESP32
-  /* -------------------------------------------------------------------------- */
+  HAL_TIM_Base_Start_IT(&htim2);     // Start timer: calculation of the algorithm
+  Init_BMI088_Bias(&imu, 1000000);	 // the second passed variable is the number of iterations to find the offset
+  //HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface !!!!!!!! --> Not needed
 
+
+  /* ----- MCP3564R SETUP ----------------------------------------------------- */
+  HAL_TIM_Base_Start(&htim9);
+  HAL_TIM_OC_Start(&htim9, TIM_CHANNEL_1);
+  HAL_Delay(10);
+
+  MCP3561_Reset(&hspi2);
+  HAL_Delay(10);
+  //MCP3561_PrintRegisters(&hspi2);
+  //printf("\n");
+
+  MCP3561_Init(&hspi2);
+  HAL_Delay(10);
+  //MCP3561_PrintRegisters(&hspi2);
+  //printf("\n");
+  HAL_Delay(2000);
+
+
+  /* ----- START ESP32 TRANSMISSION --------------------------------------------*/
+  HAL_TIM_Base_Start_IT(&htim4);     // Start the UART transmission to ESP32
   HAL_UART_Receive_IT(&huart1, (uint8_t*)rx_uart_buff, 1);
 
+  /* -------------------------------------------------------------------------- */
 
+  setup_done = true;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
-
   while (1)
   {
-	  //Debug_SPI_DMA();
-	  Toggle(SAMPLE_TIME_MS_TOGGLE);
+	//MCP3561_PrintRegisters(&hspi2);
+	if(allDiffCh)
+	{
+		printf("%.3f\t%.3f\t%.3f\t%.3f\n", adc[0], adc[1], adc[2], adc[3]);
+		allDiffCh = 0;
+	}
+	//Debug_SPI_DMA();
 
 
 
@@ -537,6 +625,44 @@ static void MX_SPI1_Init(void)
   /* USER CODE BEGIN SPI1_Init 2 */
 
   /* USER CODE END SPI1_Init 2 */
+
+}
+
+/**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
 
 }
 
@@ -679,6 +805,58 @@ static void MX_TIM4_Init(void)
 }
 
 /**
+  * @brief TIM9 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM9_Init(void)
+{
+
+  /* USER CODE BEGIN TIM9_Init 0 */
+
+  /* USER CODE END TIM9_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM9_Init 1 */
+
+  /* USER CODE END TIM9_Init 1 */
+  htim9.Instance = TIM9;
+  htim9.Init.Prescaler = 0;
+  htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim9.Init.Period = 17-1;
+  htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim9, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_OC_Init(&htim9) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_TOGGLE;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_OC_ConfigChannel(&htim9, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM9_Init 2 */
+
+  /* USER CODE END TIM9_Init 2 */
+  HAL_TIM_MspPostInit(&htim9);
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -719,14 +897,18 @@ static void MX_DMA_Init(void)
 
   /* DMA controller clock enable */
   __HAL_RCC_DMA2_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA1_Stream3_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream3_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream3_IRQn);
+  /* DMA1_Stream4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream4_IRQn);
   /* DMA2_Stream0_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
-  /* DMA2_Stream2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
   /* DMA2_Stream3_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream3_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream3_IRQn);
@@ -760,7 +942,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GYR_NCS_GPIO_Port, GYR_NCS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, SPI2_CS_Pin|GPIO_PIN_4, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : INT_ACC_Pin INT_GYR_Pin */
   GPIO_InitStruct.Pin = INT_ACC_Pin|INT_GYR_Pin;
@@ -782,14 +964,23 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GYR_NCS_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB4 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  /*Configure GPIO pin : MCP3564_IRQ_Pin */
+  GPIO_InitStruct.Pin = MCP3564_IRQ_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(MCP3564_IRQ_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : SPI2_CS_Pin PB4 */
+  GPIO_InitStruct.Pin = SPI2_CS_Pin|GPIO_PIN_4;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
   HAL_NVIC_SetPriority(EXTI2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI2_IRQn);
 
@@ -801,6 +992,53 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+// --- Static buffer for printf output redirection ---
+// Define a suitable buffer size. A larger buffer can be more efficient for
+// long printf strings, but consumes more RAM. 256 bytes is a common choice.
+#define PRINTF_BUFFER_SIZE 256
+static char s_printf_buffer[PRINTF_BUFFER_SIZE];
+static int s_printf_buffer_idx = 0; // Current index in the buffer
+
+/**
+ * @brief  Retargets the C library printf function to the USB CDC.
+ * This function is called by the printf family of functions
+ * to output a single character. Characters are buffered and
+ * transmitted when a newline is encountered or the buffer is full.
+ * @param  ch: The character to be output.
+ * @retval The character output.
+ */
+PUTCHAR_PROTOTYPE {
+    // Optional: Add carriage return before newline if only newline is received.
+    // This ensures proper line ending (\r\n) for terminals expecting it
+    // when printf only outputs '\n'.
+    if (ch == '\n') {
+        if (s_printf_buffer_idx == 0 || s_printf_buffer[s_printf_buffer_idx - 1] != '\r') {
+            // Ensure there's space for '\r' before adding it
+            if (s_printf_buffer_idx < PRINTF_BUFFER_SIZE) {
+                s_printf_buffer[s_printf_buffer_idx++] = '\r';
+            }
+        }
+    }
+
+    // Store the current character in the buffer
+    // Ensure there's space for the character before adding it
+    if (s_printf_buffer_idx < PRINTF_BUFFER_SIZE) {
+        s_printf_buffer[s_printf_buffer_idx++] = (char)ch;
+    }
+
+    // Check if the buffer is full or if a newline character was received.
+    // If either condition is true, transmit the buffered data.
+    if (s_printf_buffer_idx >= PRINTF_BUFFER_SIZE || ch == '\n') {
+        // Transmit the buffered data via USB CDC
+        // The CDC_Transmit_FS function will handle the actual USB transfer.
+        CDC_Transmit_FS((uint8_t*)s_printf_buffer, s_printf_buffer_idx);
+
+        // Reset the buffer index after transmission
+        s_printf_buffer_idx = 0;
+    }
+
+    return ch; // Return the character that was put
+}
 
 /* USER CODE END 4 */
 

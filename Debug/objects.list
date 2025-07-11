@@ -8,6 +8,7 @@
 "./Core/Src/MadgwickAHRS.o"
 "./Core/Src/Serial_Comm.o"
 "./Core/Src/main.o"
+"./Core/Src/mcp3564.o"
 "./Core/Src/stm32f4xx_hal_msp.o"
 "./Core/Src/stm32f4xx_it.o"
 "./Core/Src/syscalls.o"

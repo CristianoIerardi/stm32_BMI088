@@ -31,7 +31,8 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>  // printf ( linker flag: "-u _printf_float" uses 7kB memory)
+#include <stdbool.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -53,6 +54,8 @@ extern "C" {
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
@@ -72,9 +75,23 @@ extern char txBuff[128];
 #define ACC_NCS_GPIO_Port GPIOA
 #define GYR_NCS_Pin GPIO_PIN_4
 #define GYR_NCS_GPIO_Port GPIOC
+#define MCP3564_IRQ_Pin GPIO_PIN_0
+#define MCP3564_IRQ_GPIO_Port GPIOB
+#define MCP3564_IRQ_EXTI_IRQn EXTI0_IRQn
+#define SPI2_CS_Pin GPIO_PIN_11
+#define SPI2_CS_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-
+/**
+ *  @see https://github.com/STMicroelectronics/STM32CubeF4/blob/master/Projects/STM32F401RE-Nucleo/Examples/UART/UART_Printf/Src/main.c
+ */
+#ifdef __GNUC__
+/* With GCC, small printf (option LD Linker->Libraries->Small printf
+ set to 'Yes') calls __io_putchar() */
+#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+#define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

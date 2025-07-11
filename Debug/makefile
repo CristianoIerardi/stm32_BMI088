@@ -38,37 +38,37 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := Read_Acc
+BUILD_ARTIFACT_NAME := FOS_Sensor
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-Read_Acc.elf \
+FOS_Sensor.elf \
 
 MAP_FILES += \
-Read_Acc.map \
+FOS_Sensor.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-Read_Acc.list \
+FOS_Sensor.list \
 
 OBJCOPY_HEX += \
-Read_Acc.hex \
+FOS_Sensor.hex \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: Read_Acc.elf secondary-outputs
+main-build: FOS_Sensor.elf secondary-outputs
 
 # Tool invocations
-Read_Acc.elf Read_Acc.map: $(OBJS) $(USER_OBJS) C:\Users\crist\STM32CubeIDE\workspace_1.17.0\Read_Acc\STM32F405RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Read_Acc.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\crist\STM32CubeIDE\workspace_1.17.0\Read_Acc\STM32F405RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Read_Acc.map" -Wl,--gc-sections -static -lstdc++ --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+FOS_Sensor.elf FOS_Sensor.map: $(OBJS) $(USER_OBJS) C:\Users\crist\STM32CubeIDE\workspace_1.17.0\Read_Acc\STM32F405RGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "FOS_Sensor.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\crist\STM32CubeIDE\workspace_1.17.0\Read_Acc\STM32F405RGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="FOS_Sensor.map" -Wl,--gc-sections -static -lstdc++ --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -77,19 +77,19 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-Read_Acc.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "Read_Acc.list"
+FOS_Sensor.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "FOS_Sensor.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
-Read_Acc.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "Read_Acc.hex"
+FOS_Sensor.hex: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objcopy  -O ihex $(EXECUTABLES) "FOS_Sensor.hex"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) Read_Acc.elf Read_Acc.hex Read_Acc.list Read_Acc.map default.size.stdout
+	-$(RM) FOS_Sensor.elf FOS_Sensor.hex FOS_Sensor.list FOS_Sensor.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST) $(OBJCOPY_HEX)

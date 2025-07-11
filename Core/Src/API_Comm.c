@@ -82,7 +82,7 @@ uint8_t is_valid_number(const char *s)
  */
 void HandleReceivedString(char *str)
 {
-	char rxBuff[64];  // Buffer for optional debug response
+	//char rxBuff[64];  // Buffer for optional debug response
 
     // Remove possible trailing \r or \n characters
     char *clean_str = str;
