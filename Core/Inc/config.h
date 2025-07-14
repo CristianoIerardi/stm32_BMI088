@@ -33,6 +33,7 @@
  * - Roll, Pitch, Yaw angles (3 floats)
  * - Gyroscope data: X, Y, Z axes (3 floats)
  * - Accelerometer data: X, Y, Z axes (3 floats)
+ * - adc values (4 floats)
  * - Footer identifier
  */
 typedef struct __attribute__((packed)) {
@@ -41,7 +42,7 @@ typedef struct __attribute__((packed)) {
     float ang[3];        ///< Orientation angles: Roll, Pitch, Yaw
     float gyr[3];        ///< Gyroscope data: X, Y, Z
     float acc[3];        ///< Accelerometer data: X, Y, Z
-    //float adc[4];	 	 ///< Weight measurements from MCP3564R sensor
+    float adc[4];	 	 ///< Weight measurements from MCP3564R sensor
     uint32_t footer;     ///< Packet end marker (should be PACKET_FOOTER)
 } BinaryPacket;
 

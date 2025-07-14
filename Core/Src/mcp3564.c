@@ -302,7 +302,7 @@ uint8_t MCP3561_ReadADCData_DMA(SPI_HandleTypeDef *hspi, float *adc_volt)
 	else
 		return 0;
 
-	//printf("ch: %d\t V: %.6f V\n", channel_id, adc_volt[channel_id]);
+	printf("ch: %d\t V: %.6f V\n", channel_id, adc_volt[channel_id]);
 
 }
 

@@ -324,8 +324,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 	else if (GPIO_Pin == MCP3564_IRQ_Pin) {	/// DMA1
 		MCP3561_StartReadADCData_DMA(&hspi2);			// Start reading with DMA1
-		//allDiffCh = MCP3561_ReadADCData(&hspi2, adc);	// It read the value from the sensor MCP3564R and it writes into the variable adc[4] the measurements
-
+		//allDiffCh = MCP3561_ReadADCData(&hspi2, pkt.adc);	// It read the value from the sensor MCP3564R and it writes into the variable adc[4] the measurements
 	}
 }
 
@@ -348,8 +347,13 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	}
 	if (hspi->Instance == SPI2)	// SPI2 used for MCP3564R sensor
 	{
+		Toggle(SAMPLE_TIME_MS_TOGGLE);
 		HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
 		allDiffCh = MCP3561_ReadADCData_DMA(&hspi2, adc);	// It change the global variable adc[4] with the update value
+		pkt.adc[0] = adc[0];
+		pkt.adc[1] = adc[1];
+		pkt.adc[2] = adc[2];
+		pkt.adc[3] = adc[3];
 	}
 }
 
@@ -386,9 +390,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
     	// Send every data using just one string and one TX
 		static char txBuff[256];
-		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\n",
-				measureTick, pkt.ang[0], pkt.ang[1], pkt.ang[2],
-				measureTick, pkt.gyr[0], pkt.gyr[1], pkt.gyr[2], pkt.acc[0], pkt.acc[1], pkt.acc[2]);
+		sprintf(txBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nS,%lu,%.4f,%.4f,%.4f,%.4f\r\n",
+					measureTick, pkt.ang[0], pkt.ang[1], pkt.ang[2],
+					measureTick, pkt.gyr[0], pkt.gyr[1], pkt.gyr[2], pkt.acc[0], pkt.acc[1], pkt.acc[2],
+					measureTick, pkt.adc[0], pkt.adc[1], pkt.adc[2], pkt.adc[3]);
 				//measureTick, pkt.abs_acc); // I send the abs_acc instead the temperature just to plot it in the API graph
 		CDC_Transmit_FS((uint8_t *) txBuff, strlen(txBuff));
 	}
@@ -397,14 +402,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	{
 
     	/*------- SEND STRING --------------------------*/
-		//static char uartBuff[256];
 		/* If you want to send the string (too many bytes...) */
-		/* sprintf(uartBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nT,%lu,%.4f\r\n",
+    /*	static char uartBuff[256];
+		sprintf(uartBuff, "A,%lu,%.4f,%.4f,%.4f\r\nI,%lu,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f\r\nS,%lu,%.4f,%.4f,%.4f,%.4f\r\n",
 					measureTick, pkt.ang[0], pkt.ang[1], pkt.ang[2],
 					measureTick, pkt.gyr[0], pkt.gyr[1], pkt.gyr[2], pkt.acc[0], pkt.acc[1], pkt.acc[2],
-					measureTick, pkt.abs_acc);
+					measureTick, pkt.adc[0], pkt.adc[1], pkt.adc[2], pkt.adc[3]);
 
-		HAL_UART_Transmit_DMA(&huart1, (uint8_t*)uartBuff, strlen(uartBuff));
+		HAL_UART_Transmit_DMA(&huart1, (uint8_t*)uartBuff, strlen(uartBuff));*/
 		//CDC_Transmit_FS((uint8_t *) uartBuff, strlen(uartBuff));*/
 
     	/*------- SEND NUMBER --------------------------*/
@@ -424,9 +429,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		pkt.acc[2] = 0;  //-21.6;
 		*/
 
-    	Toggle(SAMPLE_TIME_MS_TOGGLE);
+
     	//print_packet_hex(&pkt);		// Function to debug the sent HEX string
-    	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
+    	//HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
 
 
 	}
