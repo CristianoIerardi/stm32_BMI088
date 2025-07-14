@@ -159,7 +159,6 @@ uint16_t rx_index = 0;
 /* MCP3564R Sensor params */
 float adc[4];			// Voltage value of the mesurement of different channels
 uint8_t allDiffCh = 0;		// if 1 it means that we are ready for sending data
-bool setup_done;
 
 /*------------------------------------------------------------------------*/
 
@@ -317,18 +316,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		if (!imu.readingAcc)
 			BMI088_ReadAccelerometerDMA(&imu);	// if yes read from the DMA memory
 	}
-		else if(GPIO_Pin == INT_GYR_Pin)	/// DMA2
-		{
-		// we check if the interrupt pin is the gyroscope one
-		if (!imu.readingGyr)
-			BMI088_ReadGyroscopeDMA(&imu);
+	else if(GPIO_Pin == INT_GYR_Pin)	/// DMA2
+	{
+	// we check if the interrupt pin is the gyroscope one
+	if (!imu.readingGyr)
+		BMI088_ReadGyroscopeDMA(&imu);
 	}
 	else if (GPIO_Pin == MCP3564_IRQ_Pin) {	/// DMA1
-		if(setup_done)
-		{
-			MCP3561_StartReadADCData_DMA(&hspi2);			// Start reading with DMA1
-			//allDiffCh = MCP3561_ReadADCData(&hspi2, adc);	// It read the value from the sensor MCP3564R and it writes into the variable adc[4] the measurements
-		}
+		MCP3561_StartReadADCData_DMA(&hspi2);			// Start reading with DMA1
+		//allDiffCh = MCP3561_ReadADCData(&hspi2, adc);	// It read the value from the sensor MCP3564R and it writes into the variable adc[4] the measurements
+
 	}
 }
 
@@ -357,7 +354,7 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 }
 
 
-/// /// TIMERS CALLBACK
+/// TIMERS CALLBACK
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
 	// Calculate angles with quaternions
@@ -380,10 +377,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
         /* module of the acceleration vector (not used right now) */
         //pkt.abs_acc = sqrt(pow(pkt.acc[0],2)+pow(pkt.acc[1],2) + pow(pkt.acc[2],2));
-
     }
 
-    // Send data with CDC_Transfer_FS
+    // Send data with CDC_Transfer_FS if enabled!!!
     if(htim->Instance == TIM3)
 	{
     	timestamp_TIM3++;	// how many times TIM3 is called (not used yet)
@@ -428,6 +424,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		pkt.acc[2] = 0;  //-21.6;
 		*/
 
+    	Toggle(SAMPLE_TIME_MS_TOGGLE);
     	//print_packet_hex(&pkt);		// Function to debug the sent HEX string
     	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
 
@@ -450,7 +447,7 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	setup_done = false;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -521,7 +518,7 @@ int main(void)
 
   /* -------------------------------------------------------------------------- */
 
-  setup_done = true;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
