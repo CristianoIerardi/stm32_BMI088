@@ -347,13 +347,12 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	}
 	if (hspi->Instance == SPI2)	// SPI2 used for MCP3564R sensor
 	{
-		Toggle(SAMPLE_TIME_MS_TOGGLE);
 		HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
-		allDiffCh = MCP3561_ReadADCData_DMA(&hspi2, adc);	// It change the global variable adc[4] with the update value
-		pkt.adc[0] = adc[0];
-		pkt.adc[1] = adc[1];
-		pkt.adc[2] = adc[2];
-		pkt.adc[3] = adc[3];
+		allDiffCh = MCP3561_ReadADCData_DMA(&hspi2, pkt.adc);	// It change the global variable adc[4] with the update value
+//		pkt.adc[0] = adc[0];
+//		pkt.adc[1] = adc[1];
+//		pkt.adc[2] = adc[2];
+//		pkt.adc[3] = adc[3];
 	}
 }
 
@@ -431,7 +430,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 
     	//print_packet_hex(&pkt);		// Function to debug the sent HEX string
-    	//HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
+    	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
 
 
 	}
@@ -531,9 +530,10 @@ int main(void)
   while (1)
   {
 	//MCP3561_PrintRegisters(&hspi2);
+	  Toggle(SAMPLE_TIME_MS_TOGGLE);
 	if(allDiffCh)
 	{
-		printf("%.3f\t%.3f\t%.3f\t%.3f\n", adc[0], adc[1], adc[2], adc[3]);
+		printf("%.3f\t%.3f\t%.3f\t%.3f\n", pkt.adc[0], pkt.adc[1], pkt.adc[2], pkt.adc[3]);
 		allDiffCh = 0;
 	}
 	//Debug_SPI_DMA();
