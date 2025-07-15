@@ -163,6 +163,12 @@ void MCP3561_PrintRegisters(SPI_HandleTypeDef *hspi){
  * @todo  test this function
  */
 void MCP3561_Reset(SPI_HandleTypeDef *hspi){
+	HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, 1);
+	HAL_Delay(10);
+	HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, 0);
+	HAL_Delay(10);
+	HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, 1);
+	HAL_Delay(10);
 	uint8_t cmd;
 	cmd = DEVICE_RESET_COMMAND;
 	HAL_SPI_Transmit(hspi, &cmd, 1, 10);

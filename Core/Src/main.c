@@ -188,7 +188,7 @@ void SetPriorities(void)
 	  HAL_NVIC_SetPriority(EXTI4_IRQn, 1, 2);
 
 	  // UART (commands and debug)
-	  HAL_NVIC_SetPriority(USART1_IRQn, 1, 2);
+	  HAL_NVIC_SetPriority(USART1_IRQn, 1, 3);
 
 	  // Timer - low priority
 	  HAL_NVIC_SetPriority(TIM4_IRQn, 2, 0);
@@ -502,15 +502,15 @@ int main(void)
   /* ----- MCP3564R SETUP ----------------------------------------------------- */
   HAL_TIM_Base_Start(&htim9);
   HAL_TIM_OC_Start(&htim9, TIM_CHANNEL_1);
-  HAL_Delay(10);
+  HAL_Delay(20);
 
   MCP3561_Reset(&hspi2);
-  HAL_Delay(10);
+  HAL_Delay(20);
   //MCP3561_PrintRegisters(&hspi2);
   //printf("\n");
 
   MCP3561_Init(&hspi2);
-  HAL_Delay(10);
+  HAL_Delay(20);
   //MCP3561_PrintRegisters(&hspi2);
   //printf("\n");
   HAL_Delay(2000);
