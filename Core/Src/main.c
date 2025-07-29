@@ -127,8 +127,8 @@ Quaternion q = {1, 0, 0, 0}; 				// Variable for madgwick algorithm. {1,0,0,0} i
 
 /*------------------------------------------------------------------------*/
 /* Shared variables and string to be sent format */
-#define PACKET_HEADER 0xAABBCCDD
-#define PACKET_FOOTER 0XEE8899FF
+#define PACKET_HEADER 0xAABBCCDD		// header of the packet sent by UART to ESP32
+#define PACKET_FOOTER 0XEE8899FF		// footer of the packet sent by UART to ESP32
 BinaryPacket pkt;
 
 /*------------------------------------------------------------------------*/
@@ -279,34 +279,54 @@ void Debug_SPI_DMA()
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //+++++ CALLBACK FUNCTIONS +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-/// UART CALLBACK FUNCTION
+/**
+ * @brief UART receive complete callback.
+ *
+ * This function is called automatically by the HAL library when a UART receive interrupt completes.
+ * It accumulates characters into a buffer until a newline or carriage return is received,
+ * at which point it null-terminates the string and passes it to the handler.
+ *
+ * @param huart Pointer to the UART handle structure.
+ */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart->Instance == USART1)
     {
+        // Check if the received byte is a newline or carriage return
         if (rx_byte == '\n' || rx_byte == '\r')
         {
-            rx_uart_buff[rx_index] = '\0';  // termina stringa
-            HandleReceivedString((char*)rx_uart_buff);
-            rx_index = 0;
+            rx_uart_buff[rx_index] = '\0';  // Null-terminate the string
+            HandleReceivedString((char*)rx_uart_buff);  // Process the received string
+            rx_index = 0;  // Reset the buffer index
         }
         else
         {
+            // Store the received byte if there's room in the buffer
             if (rx_index < UART_RX_BUFFER_SIZE - 1)
             {
                 rx_uart_buff[rx_index++] = rx_byte;
             }
             else
             {
-                rx_index = 0;  // overflow protection
+                rx_index = 0;  // Reset index to prevent buffer overflow
             }
         }
-        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);  // restart interrupt
+
+        // Restart the UART receive interrupt to get the next byte
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
     }
 }
 
 
 
+/**
+ * @brief External interrupt callback.
+ *
+ * This function is called when a GPIO external interrupt is triggered.
+ * It identifies which pin caused the interrupt and starts a corresponding DMA read operation.
+ *
+ * @param GPIO_Pin The GPIO pin number that triggered the interrupt.
+ */
 /// DMA Start Reading
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {   // we have an interrupt
@@ -318,17 +338,26 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 	else if(GPIO_Pin == INT_GYR_Pin)	/// DMA2
 	{
-	// we check if the interrupt pin is the gyroscope one
-	if (!imu.readingGyr)
-		BMI088_ReadGyroscopeDMA(&imu);
+		// we check if the interrupt pin is the gyroscope one
+		if (!imu.readingGyr)
+			BMI088_ReadGyroscopeDMA(&imu);  // if yes read from the DMA memory
 	}
 	else if (GPIO_Pin == MCP3564_IRQ_Pin) {	/// DMA1
-		MCP3561_StartReadADCData_DMA(&hspi2);			// Start reading with DMA1
-		//allDiffCh = MCP3561_ReadADCData(&hspi2, pkt.adc);	// It read the value from the sensor MCP3564R and it writes into the variable adc[4] the measurements
+		// interrupt from ADC MCP3564R
+		MCP3561_StartReadADCData_DMA(&hspi2);	// Start reading with DMA1
+		// allDiffCh = MCP3561_ReadADCData(&hspi2, pkt.adc); // It read the value from the sensor MCP3564R and writes into adc[4]
 	}
 }
 
 
+/**
+ * @brief SPI transmit/receive complete callback.
+ *
+ * This function is called when a SPI TxRx (transmit/receive) DMA transfer is completed.
+ * It handles the post-transfer logic for both SPI1 (IMU) and SPI2 (ADC).
+ *
+ * @param hspi Pointer to the SPI handle that triggered the callback.
+ */
 /// DMA CALLBACK
 void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the transfer has been completed
 {
@@ -336,27 +365,37 @@ void HAL_SPI_TxRxCpltCallback(SPI_HandleTypeDef *hspi)		// It tells us that the 
 	{
 		if (imu.readingAcc)
 		{
+			// complete processing after accelerometer DMA transfer
 			BMI088_ReadAccelerometerDMA_Complete(&imu);
-
 		}
 
 		if (imu.readingGyr)
 		{
+			// complete processing after gyroscope DMA transfer
 			BMI088_ReadGyroscopeDMA_Complete(&imu);
 		}
 	}
 	if (hspi->Instance == SPI2)	// SPI2 used for MCP3564R sensor
 	{
+		// deselect the MCP3564R chip
 		HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, GPIO_PIN_SET);
-		allDiffCh = MCP3561_ReadADCData_DMA(&hspi2, pkt.adc);	// It change the global variable adc[4] with the update value
-//		pkt.adc[0] = adc[0];
-//		pkt.adc[1] = adc[1];
-//		pkt.adc[2] = adc[2];
-//		pkt.adc[3] = adc[3];
+		// read ADC data from MCP3564R and update global adc[4]
+		allDiffCh = MCP3561_ReadADCData_DMA(&hspi2, pkt.adc);	// It changes the global variable adc[4] with the updated values
 	}
 }
 
 
+/**
+ * @brief Timer period elapsed callback.
+ *
+ * This function is called by the HAL when a timer overflows (period elapsed).
+ * It handles multiple timers:
+ * - TIM2: Reads IMU data, filters it, and computes orientation using Madgwick algorithm.
+ * - TIM3: Sends formatted IMU and ADC data over USB CDC.
+ * - TIM4: Sends raw binary packet via UART using DMA.
+ *
+ * @param htim Pointer to the timer handle.
+ */
 /// TIMERS CALLBACK
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
@@ -378,11 +417,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         /* LPF Filtering angles */
         //filt = LPF_Angles_Update_All(&filt, angles);
 
-        /* module of the acceleration vector (not used right now) */
-        //pkt.abs_acc = sqrt(pow(pkt.acc[0],2)+pow(pkt.acc[1],2) + pow(pkt.acc[2],2));
     }
 
-    // Send data with CDC_Transfer_FS if enabled!!!
+    // Send data with CDC_Transfer_FS --> if enabled <-- !!!
     if(htim->Instance == TIM3)
 	{
     	timestamp_TIM3++;	// how many times TIM3 is called (not used yet)
@@ -428,10 +465,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 		pkt.acc[2] = 0;  //-21.6;
 		*/
 
-
     	//print_packet_hex(&pkt);		// Function to debug the sent HEX string
     	HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&pkt, sizeof(pkt));
-
 
 	}
 }
@@ -445,7 +480,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 
 /**
   * @brief  The application entry point.
-  * @retval int
+  *
+  * This is the main entry point of the firmware. It initializes all peripherals,
+  * sets up sensors (BMI088, MCP3564R), starts timers for periodic operations, and
+  * enters an infinite loop where background tasks can be executed.
+  *
+  * @retval int Returns 0 (not used in embedded context).
   */
 int main(void)
 {
@@ -481,44 +521,44 @@ int main(void)
   MX_TIM4_Init();
   MX_SPI2_Init();
   MX_TIM9_Init();
+
   /* USER CODE BEGIN 2 */
 
-  SetPriorities();	// function to set priorities
+  SetPriorities();	// function to set NVIC interrupt priorities
 
-  HAL_Delay(500);
+  HAL_Delay(500);	// wait for peripherals to stabilize
 
   /* ----- BMI088 and MADGWICK SETUP ------------------------------------------*/
-  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);
-  SetQuaternionFromEuler(&q, 0, 0, 0);				// Angles on the starting position: roll=0, pitch=0, yaw=0
-  Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, f_LP_angles, T_TIM2);
+  BMI088_Init(&imu, &hspi1, GPIOA, GPIO_PIN_4, GPIOC, GPIO_PIN_4);					// initialize BMI088 IMU (acc + gyro)
+  SetQuaternionFromEuler(&q, 0, 0, 0);												// initialize quaternion from starting angles: roll=0, pitch=0, yaw=0
+  Filter_Init(&filt, f_LP_gyr, f_LP_acc, f_HP_gyr, f_HP_acc, f_LP_angles, T_TIM2);	// init filters for gyro, accel and angles
 
   HAL_Delay(500);
 
-  HAL_TIM_Base_Start_IT(&htim2);     // Start timer: calculation of the algorithm
-  Init_BMI088_Bias(&imu, 1000000);	 // the second passed variable is the number of iterations to find the offset
-  //HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data with CDC_Transmit_FS serial interface !!!!!!!! --> Not needed
+  HAL_TIM_Base_Start_IT(&htim2);     // Start timer: executes Madgwick filter at fixed interval
+  Init_BMI088_Bias(&imu, 1000000);	 // calculate sensor bias with given number of samples
 
+  //HAL_TIM_Base_Start_IT(&htim3);   // Start timer: send data via USB CDC (optional)
 
   /* ----- MCP3564R SETUP ----------------------------------------------------- */
-  HAL_TIM_Base_Start(&htim9);
-  HAL_TIM_OC_Start(&htim9, TIM_CHANNEL_1);
+  HAL_TIM_Base_Start(&htim9);				// start TIM9 to generate external clock for MCP3564R
+  HAL_TIM_OC_Start(&htim9, TIM_CHANNEL_1);	// enable PWM on channel 1 (CLK for ADC)
   HAL_Delay(20);
 
-  MCP3561_Reset(&hspi2);
+  MCP3561_Reset(&hspi2);					// reset ADC
   HAL_Delay(20);
-  //MCP3561_PrintRegisters(&hspi2);
+  //MCP3561_PrintRegisters(&hspi2); 		// optional: print ADC registers for debug
   //printf("\n");
 
-  MCP3561_Init(&hspi2);
+  MCP3561_Init(&hspi2);	// initialize ADC
   HAL_Delay(20);
-  //MCP3561_PrintRegisters(&hspi2);
+  //MCP3561_PrintRegisters(&hspi2); 		// optional: print ADC registers again
   //printf("\n");
-  HAL_Delay(2000);
-
+  HAL_Delay(2000);							// allow ADC to stabilize
 
   /* ----- START ESP32 TRANSMISSION --------------------------------------------*/
-  HAL_TIM_Base_Start_IT(&htim4);     // Start the UART transmission to ESP32
-  HAL_UART_Receive_IT(&huart1, (uint8_t*)rx_uart_buff, 1);
+  HAL_TIM_Base_Start_IT(&htim4);     						// Start the UART transmission to ESP32 using DMA
+  HAL_UART_Receive_IT(&huart1, (uint8_t*)rx_uart_buff, 1);	// Start UART reception interrupt
 
   /* -------------------------------------------------------------------------- */
 
@@ -529,16 +569,16 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	//MCP3561_PrintRegisters(&hspi2);
-	  Toggle(SAMPLE_TIME_MS_TOGGLE);
-	if(allDiffCh)
+	//MCP3561_PrintRegisters(&hspi2); // For debug: continuous ADC register monitoring
+	Toggle(SAMPLE_TIME_MS_TOGGLE); // toggles pin or state for debug timing
+
+	/*if(allDiffCh)
 	{
 		printf("%.3f\t%.3f\t%.3f\t%.3f\n", pkt.adc[0], pkt.adc[1], pkt.adc[2], pkt.adc[3]);
 		allDiffCh = 0;
-	}
-	//Debug_SPI_DMA();
+	}*/
 
-
+	//Debug_SPI_DMA(); // For debug: test SPI DMA transfer handling
 
     /* USER CODE END WHILE */
 
@@ -546,6 +586,7 @@ int main(void)
   }
   /* USER CODE END 3 */
 }
+
 
 /**
   * @brief System Clock Configuration

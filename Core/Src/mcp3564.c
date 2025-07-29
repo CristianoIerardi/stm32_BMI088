@@ -30,6 +30,12 @@ const uint8_t mcp356x_tx_buf[MCP3561_DMA_RX_SIZE] = {
 };
 /* ----------------------------------------- */
 
+/**
+ * @brief  Performs a low-level SPI write operation to the MCP3561.
+ * @param  hspi: Pointer to the SPI handle
+ * @param  pData: Pointer to data to transmit
+ * @param  size: Size of data to transmit
+ */
 void _MCP3561_write(SPI_HandleTypeDef *hspi, uint8_t *pData, uint16_t size){
 	// manually operate the !CS signal, because the STM32 hardware NSS signal is (sadly) useless
 	HAL_GPIO_WritePin(MCP3561_CHIP_SELECT_GPIO_Port, MCP3561_CHIP_SELECT_GPIO_Pin, GPIO_PIN_RESET);
@@ -37,6 +43,12 @@ void _MCP3561_write(SPI_HandleTypeDef *hspi, uint8_t *pData, uint16_t size){
 	HAL_GPIO_WritePin(MCP3561_CHIP_SELECT_GPIO_Port, MCP3561_CHIP_SELECT_GPIO_Pin, GPIO_PIN_SET);
 }
 
+/**
+ * @brief  Performs an SPI read operation and returns 8-bit register content.
+ * @param  hspi: Pointer to the SPI handle
+ * @param  cmd: Pointer to command buffer
+ * @retval 8-bit value read from register
+ */
 uint8_t _MCP3561_sread(SPI_HandleTypeDef *hspi, uint8_t *cmd){
 	uint8_t reg8[2];
 	// manually operate the !CS signal, because the STM32 hardware NSS signal is (sadly) useless
@@ -47,8 +59,9 @@ uint8_t _MCP3561_sread(SPI_HandleTypeDef *hspi, uint8_t *cmd){
 }
 
 /**
- * @brief  Initializes the MCP356x chip according to user config
- * @note   must be edited by the user
+ * @brief  Initializes the MCP3561 chip with desired configuration settings.
+ * @param  hspi: Pointer to the SPI handle
+ * @note   Modify register settings as needed for your application.
  */
 void MCP3561_Init(SPI_HandleTypeDef *hspi){
 	uint8_t cmd[4] = {0,0,0,0};
@@ -106,7 +119,8 @@ void MCP3561_Init(SPI_HandleTypeDef *hspi){
 }
 
 /**
- * @brief prints the configuration registers content
+ * @brief  Reads and prints MCP3561 configuration registers via UART.
+ * @param  hspi: Pointer to the SPI handle
  */
 void MCP3561_PrintRegisters(SPI_HandleTypeDef *hspi){
 	uint8_t reg8 = 0;
@@ -159,8 +173,8 @@ void MCP3561_PrintRegisters(SPI_HandleTypeDef *hspi){
 }
 
 /**
- * @brief resets the configuration to the default values
- * @todo  test this function
+ * @brief  Performs a device reset on the MCP3561 via SPI command.
+ * @param  hspi: Pointer to the SPI handle
  */
 void MCP3561_Reset(SPI_HandleTypeDef *hspi){
 	HAL_GPIO_WritePin(SPI2_CS_GPIO_Port, SPI2_CS_Pin, 1);
@@ -177,7 +191,10 @@ void MCP3561_Reset(SPI_HandleTypeDef *hspi){
 
 
 /**
- * @brief read 24 Bit left justified ADC register
+ * @brief  Reads ADC data and converts it to voltage.
+ * @param  hspi: Pointer to the SPI handle
+ * @param  adc_volt: Pointer to float array to store channel voltages
+ * @retval 1 if completed conversion for all channels, 0 otherwise
  * @todo  how to read from other data formats?
  */
 uint8_t MCP3561_ReadADCData(SPI_HandleTypeDef *hspi, float *adc_volt)
@@ -243,6 +260,12 @@ uint8_t MCP3561_ReadADCData(SPI_HandleTypeDef *hspi, float *adc_volt)
 
 }
 
+/**
+ * @brief read 24 Bit left justified ADC register. It starts the DMA data transfer
+ * @param  hspi: Pointer to the SPI handle
+ * @todo  how to read from other data formats?
+ *
+ */
 void MCP3561_StartReadADCData_DMA(SPI_HandleTypeDef *hspi)
 {
     // CS pin low
@@ -251,9 +274,13 @@ void MCP3561_StartReadADCData_DMA(SPI_HandleTypeDef *hspi)
     HAL_SPI_TransmitReceive_DMA(hspi, mcp356x_tx_buf, mcp356x_rx_buf, MCP3561_DMA_RX_SIZE);
 }
 
+
+
 /**
- * @brief read 24 Bit left justified ADC register
- * @todo  how to read from other data formats?
+ * @brief  Reads ADC data from DMA buffer and converts it to voltage.
+ * @param  hspi: Pointer to the SPI handle
+ * @param  adc_volt: Pointer to float array to store channel voltages
+ * @retval 1 if completed conversion for all channels, 0 otherwise
  */
 uint8_t MCP3561_ReadADCData_DMA(SPI_HandleTypeDef *hspi, float *adc_volt)
 {
@@ -339,6 +366,10 @@ uint8_t MCP3561_ReadADCData_DMA(SPI_HandleTypeDef *hspi, float *adc_volt)
 
 
 /*
+ *
+ * @brief  Reads ADC data using interrupt-based SPI (not recommended).
+ * @param  hspi: Pointer to the SPI handle
+ * @retval Raw 32-bit ADC data
  * @bug this does not work because it will skip the transaction and write to the chip select pin
  */
 uint32_t MCP3561_ReadADCData_IT(SPI_HandleTypeDef *hspi){
@@ -361,7 +392,11 @@ uint32_t MCP3561_ReadADCData_IT(SPI_HandleTypeDef *hspi){
 
 
 
-// Function to convert a row value into float voltage
+/**
+ * @brief  Converts a raw 24-bit ADC value into a voltage.
+ * @param  raw_adc_value: 24-bit ADC reading
+ * @retval Voltage as a double
+ */
 double convertAdcToVoltage(uint32_t raw_adc_value) {
     int32_t signed_adc_value;
 

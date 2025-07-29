@@ -1,10 +1,17 @@
-/*
- * MadgwickAHRS.c
+/**
+ * @file MadgwickAHRS.c
+ * @brief Implementation of Madgwick's IMU and AHRS sensor fusion algorithms.
  *
- *  Created on: Apr 17, 2025
- *      Author: crist
+ * This algorithm is used for calculating orientation (quaternion) using
+ * gyroscope, accelerometer, and optionally magnetometer data. It is designed
+ * to run efficiently on embedded systems.
+ *
+ * Original algorithm source: http://www.x-io.co.uk/node/8#open_source_ahrs_and_imu_algorithms
+ *
+ * @author SOH Madgwick
+ * @date 29/09/2011
+ * @updated 17/04/2025 by crist
  */
-
 
 //=====================================================================================================
 // MadgwickAHRS.c
@@ -19,36 +26,51 @@
 // 19/02/2012	SOH Madgwick	Magnetometer measurement is normalised
 //
 //=====================================================================================================
-
-//---------------------------------------------------------------------------------------------------
-// Header files
+//=====================================================================================================
+// Includes
+//=====================================================================================================
 
 #include "MadgwickAHRS.h"
 #include <math.h>
 
-//---------------------------------------------------------------------------------------------------
-// Definitions
+//=====================================================================================================
+// Definitions and Variables
+//=====================================================================================================
 
-//#define sampleFreq	512.0f		// sample frequency in Hz
-#define betaDef		0.15f		// 2 * proportional gain
+#define betaDef 0.15f  ///< 2 * proportional gain (default value)
 
-//---------------------------------------------------------------------------------------------------
-// Variable definitions
+volatile float beta = betaDef;  ///< Algorithm gain (tunable parameter)
+volatile float q0 = 1.0f, q1 = 0.0f, q2 = 0.0f, q3 = 0.0f;  ///< Quaternion representing orientation
 
-volatile float beta = betaDef;								// 2 * proportional gain (Kp)
-volatile float q0 = 1.0f, q1 = 0.0f, q2 = 0.0f, q3 = 0.0f;	// quaternion of sensor frame relative to auxiliary frame
+//=====================================================================================================
+// Function Prototypes
+//=====================================================================================================
 
-//---------------------------------------------------------------------------------------------------
-// Function declarations
-
+/**
+ * @brief Computes the inverse square root using fast approximation.
+ *
+ * @param x Input value
+ * @return Inverse square root of x
+ */
 float invSqrt(float x);
 
-//====================================================================================================
-// Functions
-
-//---------------------------------------------------------------------------------------------------
-// AHRS algorithm update
-
+//=====================================================================================================
+// Public Functions
+//=====================================================================================================
+/**
+ * @brief Madgwick AHRS algorithm update with full 9DOF (gyro + accel + mag).
+ *
+ * @param gx Gyroscope X (rad/s)
+ * @param gy Gyroscope Y (rad/s)
+ * @param gz Gyroscope Z (rad/s)
+ * @param ax Accelerometer X (g)
+ * @param ay Accelerometer Y (g)
+ * @param az Accelerometer Z (g)
+ * @param mx Magnetometer X (uT)
+ * @param my Magnetometer Y (uT)
+ * @param mz Magnetometer Z (uT)
+ * @param sampleFreq Sampling frequency (Hz)
+ */
 void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float sampleFreq) {
 	float recipNorm;
 	float s0, s1, s2, s3;
@@ -146,8 +168,20 @@ void MadgwickAHRSupdate(float gx, float gy, float gz, float ax, float ay, float 
 }
 
 //---------------------------------------------------------------------------------------------------
-// IMU algorithm update
 
+/**
+ * @brief Madgwick AHRS update using only gyroscope and accelerometer (6DOF).
+ *
+ * This function is used when magnetometer data is not available.
+ *
+ * @param gx Gyroscope X (rad/s)
+ * @param gy Gyroscope Y (rad/s)
+ * @param gz Gyroscope Z (rad/s)
+ * @param ax Accelerometer X (g)
+ * @param ay Accelerometer Y (g)
+ * @param az Accelerometer Z (g)
+ * @param sampleFreq Sampling frequency (Hz)
+ */
 void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, float az, float sampleFreq) {
 	float recipNorm;
 	float s0, s1, s2, s3;
@@ -219,7 +253,14 @@ void MadgwickAHRSupdateIMU(float gx, float gy, float gz, float ax, float ay, flo
 //---------------------------------------------------------------------------------------------------
 // Fast inverse square-root
 // See: http://en.wikipedia.org/wiki/Fast_inverse_square_root
-
+/**
+ * @brief Computes the fast inverse square root (Quake III style).
+ *
+ * This is an optimized approximation for calculating 1/sqrt(x).
+ *
+ * @param x Input value
+ * @return Approximate inverse square root of x
+ */
 float invSqrt(float x) {
 	float halfx = 0.5f * x;
 	float y = x;
